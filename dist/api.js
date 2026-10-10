@@ -13,3 +13,5 @@ export async function loadOrders(){let all=[];for(let offset=0;;offset+=500){con
 export const saveOrder=(id,status,notes,reason)=>rpc('update_order',{p_id:id,p_status:status,p_notes:notes,p_reason:reason||''});
 export async function loadSettings(){return rpc('admin_pixel_config');}
 export const saveSettings=value=>rpc('save_pixel_config',{p_value:value});
+
+export async function passwordLogin(email,password){save(await request('/auth/v1/token?grant_type=password',{method:'POST',body:{email,password}}));}
