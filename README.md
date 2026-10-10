@@ -1,15 +1,39 @@
-# NK 訂單管理後台（本地預覽）
+# NK 订单管理后台
 
-啟動：在此資料夾執行 `node server.mjs`，開啟 http://127.0.0.1:4180 。不需要安裝套件。
+GitHub 仓库：allanfetzer379-hub/health-life-admin
+预定后台地址：https://allanfetzer379-hub.github.io/health-life-admin/
+落地页：https://allanfetzer379-hub.github.io/health-life-landing/
 
-驗證：`node --test tests.mjs`。
+## 当前状态
 
-功能：訂單統計、搜尋、日期／來源／狀態／重粉篩選、分頁勾選、CSV 匯出、訂單詳情、歷史重粉比對、狀態和備註修改、操作紀錄、模擬下單、資料還原、手機版。
+后台与订单接入代码已准备；config.ready 为 false 时只展示部署准备页面，不允许登录、读写订单。须完成下列 Supabase 配置和在线验收后，才算正式开通。数据库尚未创建时，勿将此状态当成可收单。
 
-這是可操作的本地展示，沒有正式登入驗證，沒有連接 Supabase，也不會接收線上落地頁的下單。28 筆初始資料全部為虛構；請勿輸入真實客戶資料。修改使用瀏覽器 localStorage 保存，清除瀏覽器資料會重置；不能作為正式資料庫或安全認證。
+## 本地运行
 
-重粉規則：姓名或電話任一匹配即標記；統一姓名空白／全半角／英文大小寫，統一台灣電話國碼。重粉仍保存訂單。請求識別碼用於區分提交重試與重新下單；正式版仍須在服務端交易中實作查重及並行保護。
+`node server.mjs` 后打开 http://127.0.0.1:4180 。`node --test tests.mjs` 运行纯逻辑测试。无需安装前端依赖。
 
-下一階段：GitHub 後台倉庫 health-life-admin；Supabase 專案 health-life-orders；服務端下單接口、管理員身份驗證、資料庫權限及正式購買頁對接。目前尚未建立或部署任何線上資源。
+## 配置 Supabase
 
-更新：后台界面采用简体中文，客户姓名保持原样。列表直接修改状态并保存，支持无效原因和一键复制；重粉仅保留标签及筛选。详情包含广告来源 ID、下单 IP、设备信息，支持广告 ID 包含匹配筛选及导出。演示 IP 使用文档专用 192.0.2.0/24 地址，所有这些值均为模拟数据；正式版须在服务端采集可信客户端 IP，并随下单保存设备与广告参数。
+1. 新建免费的 health-life-orders 项目。项目密码由账号所有者设置。关闭自动暴露新表，启用 RLS。
+2. 执行 supabase/migrations/202610110001_orders.sql。
+3. 通过 SQL Editor 将授权管理员邮箱插入 private.admin_members。只有该表中的邮箱经过 Supabase Auth 登录，才可访问后台。
+4. Auth URL Configuration：Site URL 为后台地址；Redirect URLs 添加该完整地址。邮件登录使用项目 Auth，不是 Supabase 控制台登录态。默认邮件服务的收件人限制和速率限制需在实际登录时验证；扩大使用前配置自己的 SMTP。
+5. 部署 supabase/functions/submit-order/index.ts，函数名 submit-order，采用 config.toml 的匿名公开提交模式。订单表禁止匿名读取、写入；仅此函数可调用受保护的提交事务。使用项目默认服务端环境变量，不将服务密钥放入前端或 Git。
+6. 运行 `node tools/configure.mjs <项目URL> <publishable或anon公开密钥>`，同时填写后台和同级 landing-page 的公开配置。
+7. main 保存源码，gh-pages 发布 dist 的内容。落地页接入文件也需同步部署。
+
+## 验收要求
+
+- 未登录无法读取订单；未授权登录账号无法读取订单或修改像素。
+- 管理员可登录、查询、修改状态和备注、导出、保存 FB/TikTok 像素。
+- 提交正常订单、仅姓名相同、仅电话相同、双重匹配和同请求重试；确认去重与幂等。
+- 验证真实网关传入 x-forwarded-for 的语义，拒绝客户端伪造 IP；目前函数实现需经线上验证后才开放收单。
+- 验证成功响应之后才跳转成功页；失败可重试。
+- 验证广告 ID、UA/IP 入库，像素仅在配置启用时加载；表单转化不等于已付款。
+- 清理自己创建的测试订单。
+
+## 数据与功能
+
+后台简体中文，客户姓名原样保存和显示；仅查重时统一格式。姓名或电话任一匹配即标记。列表直接修改状态、无效原因、一键复制；日期、来源、广告 ID、状态与重粉筛选。IP、UA 与广告 ID 随下单保存。像素 ID 与广告 ID 是不同字段。
+
+数据与像素配置来自 Supabase，后台不再使用本地演示订单。数据库脚本内不含真实客户资料和管理员账号。publishable/anon key 可以公开，service-role key 和数据库密码严禁公开。
