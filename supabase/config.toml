@@ -1,0 +1,2 @@
+[functions.submit-order]
+verify_jwt = false
