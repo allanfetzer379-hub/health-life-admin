@@ -1,2 +1,1 @@
-// Public configuration only. No database password or service-role key belongs here.
-export const config = Object.freeze({url:'',publishableKey:'',ready:false});
+export const config=Object.freeze({"url":"https://kasawxvqxtsnjlbysshv.supabase.co","publishableKey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imthc2F3eHZxeHRzbmpsYnlzc2h2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDk1MzMsImV4cCI6MjEwNzIyNTUzM30.FvjFWQsLFx6eD-qQviN8Fd-98xkmZGiePylBANPbC1I","ready":true});

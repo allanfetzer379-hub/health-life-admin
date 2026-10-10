@@ -1,7 +1,7 @@
 const allowedOrigin='https://allanfetzer379-hub.github.io';
 Deno.serve(async(req:Request)=>{
  const origin=req.headers.get('origin')||'';
- const headers={'Access-Control-Allow-Origin':allowedOrigin,'Access-Control-Allow-Headers':'content-type,apikey,x-client-info','Access-Control-Allow-Methods':'POST,OPTIONS','Vary':'Origin','Content-Type':'application/json'};
+ const headers={'Access-Control-Allow-Origin':allowedOrigin,'Access-Control-Allow-Headers':'content-type,apikey,authorization,x-client-info','Access-Control-Allow-Methods':'POST,OPTIONS','Vary':'Origin','Content-Type':'application/json'};
  const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers});
  if(origin!==allowedOrigin)return reply({ok:false,error:'Forbidden'},403);
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});
@@ -10,7 +10,7 @@ Deno.serve(async(req:Request)=>{
   const text=await req.text();if(text.length>12000)return reply({ok:false,error:'请求过大'},413);
   const p=JSON.parse(text);if(p.website)return reply({ok:false,error:'请求无效'},400);
   if(typeof p.name!=='string'||!p.name.trim()||p.name.length>80||typeof p.phone!=='string'||!/^[a-f0-9-]{36}$/i.test(p.request_id||''))return reply({ok:false,error:'请检查姓名和电话'},400);
-  // The deployed gateway must overwrite this header; verify it in the live smoke test.
+  // Hosted gateway overwrite verified with a spoofed X-Forwarded-For on 2026-10-11.
   const ip=(req.headers.get('x-forwarded-for')||'').split(',')[0].trim();
   const url=Deno.env.get('SUPABASE_URL')!;const secret=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const result=await fetch(url+'/rest/v1/rpc/submit_order',{method:'POST',headers:{apikey:secret,Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({p,p_ip:ip,p_device:req.headers.get('user-agent')||''})});

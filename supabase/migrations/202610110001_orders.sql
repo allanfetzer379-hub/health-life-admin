@@ -42,7 +42,7 @@ if not public.is_admin() then raise exception '无权限';end if;
 foreach platform in array array['facebook','tiktok'] loop
 if jsonb_typeof(p_value->platform) is distinct from 'array' or jsonb_array_length(p_value->platform)>20 then raise exception '配置格式错误';end if;
 for p in select * from jsonb_array_elements(p_value->platform) loop
-if jsonb_typeof(p->'enabled') is distinct from 'boolean' or length(p->>'id')>100 or coalesce(p->>'id','') !~ case when platform='facebook' then '^[0-9]+$' else '^[A-Za-z0-9]+$' end then raise exception '像素 ID 格式错误';end if;
+if jsonb_typeof(p->'enabled') is distinct from 'boolean' or length(p->>'id')>100 or coalesce(p->>'id','') !~ (case when platform='facebook' then '^[0-9]+$' else '^[A-Za-z0-9]+$' end) then raise exception '像素 ID 格式错误';end if;
 end loop;
 if (select count(*)<>count(distinct v->>'id') from jsonb_array_elements(p_value->platform) v) then raise exception '像素 ID 重复';end if;
 end loop;
