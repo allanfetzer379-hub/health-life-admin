@@ -1,4 +1,4 @@
-import * as api from './api.js';
+import * as api from './api.js?v=20261011-source';
 import {statuses,dateKey,normalizePhone,csv} from './model.js';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let orders=[];let page=1,view='orders',selected=new Set(),activeId=null,toastTimer,listMode='all';const PAGE=10;

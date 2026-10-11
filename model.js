@@ -1,4 +1,5 @@
 export const statuses={new:'待联系',contacted:'已联系',confirmed:'已确认',shipped:'已发货',completed:'已完成',cancelled:'已取消',invalid:'无效'};
+export function sourceLabel(value){const source=String(value||'').trim();if(/^(facebook|fb|meta)$/i.test(source))return 'Facebook';if(/^(tiktok|tk)$/i.test(source))return 'TikTok';if(!source||source==='直接访问')return '直接访问';return '其他来源';}
 export const normalizeName=s=>String(s||'').normalize('NFKC').replace(/\s/g,'').toLowerCase();
 export const normalizePhone=s=>{let v=String(s||'').normalize('NFKC').replace(/[^0-9]/g,'');return v.startsWith('886')?'0'+v.slice(3):v;};
 export function matches(order,orders){return orders.filter(o=>o.id!==order.id).flatMap(o=>{const name=!!normalizeName(order.name)&&normalizeName(order.name)===normalizeName(o.name);const phone=!!normalizePhone(order.phone)&&normalizePhone(order.phone)===normalizePhone(o.phone);return name||phone?[{id:o.id,reason:name&&phone?'姓名及电话':name?'姓名':'电话'}]:[];});}

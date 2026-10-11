@@ -1,4 +1,5 @@
 import {config} from './config.js';
+import {sourceLabel} from './model.js?v=20261011-source';
 const SESSION='nk-admin-auth-v1';
 let session;try{session=JSON.parse(sessionStorage.getItem(SESSION)||'null');}catch{}
 function save(s){session=s;if(s)sessionStorage.setItem(SESSION,JSON.stringify(s));else sessionStorage.removeItem(SESSION);}
@@ -9,7 +10,7 @@ export async function verifyLogin(email,token){const s=await request('/auth/v1/v
 export async function restoreLogin(){const params=new URLSearchParams(location.hash.slice(1));if(params.has('access_token')){save({access_token:params.get('access_token'),refresh_token:params.get('refresh_token'),expires_at:Number(params.get('expires_at'))||Date.now()/1000+Number(params.get('expires_in')||3600)});history.replaceState(null,'',location.pathname+location.search);}if(!session)return false;try{const allowed=await rpc('is_admin');if(!allowed){await signOut();throw Error('此账号没有后台管理权限。');}return true;}catch(e){save(null);throw e;}}
 export async function signOut(){try{if(session)await request('/auth/v1/logout',{method:'POST',auth:true});}finally{save(null);}}
 export const rpc=(name,body={})=>request('/rest/v1/rpc/'+name,{method:'POST',body,auth:true});
-export async function loadOrders(){let all=[];for(let offset=0;;offset+=500){const rows=await request('/rest/v1/orders?select=*&order=created_at.desc,id.asc&limit=500&offset='+offset,{auth:true});all.push(...rows);if(rows.length<500)break;}return all.map(o=>({id:o.id,name:o.name,phone:o.phone,createdAt:o.created_at,source:o.source,adId:o.ad_id,ip:o.ip,device:o.device,product:o.product,quantity:o.quantity,price:o.price,status:o.status,notes:o.notes,invalidReason:o.invalid_reason,matches:o.matches||[],logs:o.logs||[]}));}
+export async function loadOrders(){let all=[];for(let offset=0;;offset+=500){const rows=await request('/rest/v1/orders?select=id,name,phone,created_at,source,ad_id,ip,device,product,quantity,price,status,notes,invalid_reason,matches,logs&order=created_at.desc,id.asc&limit=500&offset='+offset,{auth:true});all.push(...rows);if(rows.length<500)break;}return all.map(o=>({id:o.id,name:o.name,phone:o.phone,createdAt:o.created_at,source:sourceLabel(o.source),adId:o.ad_id,ip:o.ip,device:o.device,product:o.product,quantity:o.quantity,price:o.price,status:o.status,notes:o.notes,invalidReason:o.invalid_reason,matches:o.matches||[],logs:o.logs||[]}));}
 export const saveOrder=(id,status,notes,reason)=>rpc('update_order',{p_id:id,p_status:status,p_notes:notes,p_reason:reason||''});
 export async function loadSettings(){return rpc('admin_pixel_config');}
 export const saveSettings=value=>rpc('save_pixel_config',{p_value:value});
