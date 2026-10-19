@@ -24,3 +24,12 @@ dialog{border:0;padding:0;border-radius:16px;box-shadow:0 20px 100px #102c3940;c
 @media(max-width:1100px){.pixel-grid{grid-template-columns:1fr}}@media(max-width:760px){.pixel-heading{padding:18px}.pixel-heading h2{font-size:15px}.pixel-row{padding:16px;gap:8px}.pixel-heading button{font-size:11px}.settings-notice{font-size:11px}.pixel-fields input{font-size:12px}}
 
 body.locked .sidebar,body.locked .shell{display:none}#auth-panel{min-height:100dvh;display:grid;place-items:center;padding:25px;background:#eef2f8}.login-card{width:min(440px,100%);padding:35px;background:white;border:1px solid #e1e7f0;border-radius:16px;box-shadow:0 15px 50px #1d334910}.login-card h1{font-size:24px;margin:23px 0 12px}.login-card .logo{width:48px;height:48px}.login-card form{margin-top:20px}#login-message{font-size:12px;line-height:1.8;margin-top:24px;color:#7c8da9}#verify-form{border-top:1px solid var(--line);padding-top:8px}#logout{font-size:11px;padding:7px 10px;margin-left:10px}
+#admin-order-typography-v2{display:none}
+.order-row{font-size:13px;padding-top:24px;padding-bottom:24px}
+.order-title .short-id{font-size:12px;font-weight:600;color:#7189b2;letter-spacing:.2px}
+.order-title .customer{font-size:16px;font-weight:700}
+.order-meta{font-size:13px;line-height:1.6}
+.order-meta .mono{font-size:14px}
+.order-date{font-size:12px;line-height:1.5}
+.order-title .badge,.source-chip,.ad-chip{font-size:11px}
+@media(max-width:760px){.order-row{padding-top:21px;padding-bottom:21px}.order-title .short-id{font-size:11px}.order-title .customer{font-size:16px}.order-meta{font-size:12px}.order-meta .mono{font-size:14px}.order-date{font-size:11px}}
