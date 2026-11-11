@@ -1,4 +1,4 @@
-import * as api from './api.js?v=20261112-orders-session';
+import * as api from './api.js?v=20261112-product-pixels';
 import { createSiteProtectionSettings } from './site-protection.js?v=20261111-vpn';
 import { startOrderRealtime } from './order-realtime.js?v=20261112-orders';
 import {statuses,dateKey,normalizePhone,csv} from './model.js';
@@ -438,7 +438,7 @@ function openDetail(id,preserve=false){
 $('#today').textContent=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Taipei',month:'long',day:'numeric',weekday:'long'}).format(Date.now());Object.entries(statuses).forEach(([v,l])=>$('#status').add(new Option(l,v)));
 document.addEventListener('click',e=>{const statusButton=e.target.closest('[data-status]');if(statusButton)updateStatus(statusButton.dataset.id,statusButton.dataset.status);const invalid=e.target.closest('[data-invalid]');if(invalid){const reason=invalid.closest('.order-row').querySelector('[data-reason]').value;if(!reason){toast('请先选择无效原因');return;}updateStatus(invalid.dataset.invalid,'invalid',reason);}const copy=e.target.closest('[data-copy]');if(copy){const o=orders.find(x=>x.id===copy.dataset.copy);copyText(`订单编号：${displayId(o)}\n下单时间：${dateKey(o.createdAt)} ${time(o.createdAt)}\n商品：${o.product} × ${o.quantity}\n订单金额：NT$ ${o.price.toLocaleString()}\n姓名：${o.name}\n电话：${o.phone}`);}const tab=e.target.closest('[data-list]');if(tab){listMode=tab.dataset.list;page=1;selected.clear();
 document.querySelectorAll('[data-list]').forEach(b=>b.classList.toggle('active',b===tab));if(tab.dataset.list==='all')setTodayFilter();render();}const close=e.target.closest('[data-close]');if(close)$('#'+close.dataset.close).close();const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const nav=e.target.closest('[data-view]');if(nav&&(nav.dataset.view==='orders'||isAdmin())){view=nav.dataset.view;
-document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===nav));$('#orders-view').hidden=view==='settings';$('#settings-view').hidden=view!=='settings';$('#crumb').textContent=view==='settings'?'系统设置':ordersLabel();$('#page-title').textContent='订单工作台';$('#list-title').firstChild.textContent=ordersLabel()+' ';clear();if(view==='settings'){siteProtection.open();refreshStaff().catch(error=>staffFeedback(error.message,true));}else{setTodayFilter();render();}}const quick=e.target.closest('[data-days]');if(quick){const d=quick.dataset.days;const now=new Date();const end=dateKey(now);let start=end;if(d!=='all'){now.setDate(now.getDate()-(d==='1'?1:d==='7'?6:0));start=dateKey(now);}$('#from').value=d==='all'?'':start;$('#to').value=d==='all'?'':d==='1'?start:end;
+document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===nav));$('#orders-view').hidden=view==='settings';$('#settings-view').hidden=view!=='settings';$('#crumb').textContent=view==='settings'?'系统设置':ordersLabel();$('#page-title').textContent='订单工作台';$('#list-title').firstChild.textContent=ordersLabel()+' ';clear();if(view==='settings'){siteProtection.open();void loadPixelSettings();refreshStaff().catch(error=>staffFeedback(error.message,true));}else{setTodayFilter();render();}}const quick=e.target.closest('[data-days]');if(quick){const d=quick.dataset.days;const now=new Date();const end=dateKey(now);let start=end;if(d!=='all'){now.setDate(now.getDate()-(d==='1'?1:d==='7'?6:0));start=dateKey(now);}$('#from').value=d==='all'?'':start;$('#to').value=d==='all'?'':d==='1'?start:end;
 document.querySelectorAll('[data-days]').forEach(b=>b.classList.toggle('chosen',b===quick));page=1;selected.clear();render();}});
 for(const id of ['search','ad-id','status','duplicate','source','from','to'])$('#'+id).addEventListener(['search','ad-id'].includes(id)?'input':'change',()=>{page=1;selected.clear();if(['from','to'].includes(id))document.querySelectorAll('[data-days]').forEach(b=>b.classList.remove('chosen'));render();});
 $('#rows').onchange=e=>{if(e.target.dataset.otherStatus&&e.target.value){updateStatus(e.target.dataset.otherStatus,e.target.value);return;}const id=e.target.dataset.select;if(id){e.target.checked?selected.add(id):selected.delete(id);render();}};$('#select-page').onchange=e=>{filtered().slice((page-1)*PAGE,page*PAGE).forEach(o=>e.target.checked?selected.add(o.id):selected.delete(o.id));render();};$('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};$('#clear').onclick=clear;$('#empty-clear').onclick=clear;$('#refresh').onclick=refreshOrdersManually;$('#export').onclick=()=>{if(!isAdmin())return;const rows=selected.size?orders.filter(o=>selected.has(o.id)):filtered();if(!rows.length){toast('目前没有可导出的订单');return;}const a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv(rows)],{type:'text/csv;charset=utf-8'}));a.href=url;a.download=`NK-orders-${dateKey(Date.now())}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`已导出 ${rows.length} 笔订单`);};render();
@@ -490,15 +490,160 @@ async function updateStatus(id,status,reason=''){
 }
 async function copyText(text){try{await navigator.clipboard.writeText(text);toast('客户信息已复制');}catch{toast('复制未成功，请在详情中手动复制。');}}
 
-let pixelSettings={facebook:[],tiktok:[]};
-function renderPixels(){for(const platform of ['facebook','tiktok']){$('#'+platform+'-pixels').innerHTML=pixelSettings[platform].length?pixelSettings[platform].map((p,i)=>`<div class="pixel-row"><div class="pixel-fields"><label>像素 ID<input data-pixel-platform="${platform}" data-pixel-index="${i}" aria-label="${platform==='facebook'?'FB':'TK'} 像素 ID ${i+1}" placeholder="${platform==='facebook'?'输入数字像素 ID':'输入 TikTok 像素 ID'}" value="${esc(p.id)}" maxlength="100" autocomplete="off"></label></div><label class="pixel-toggle"><input type="checkbox" data-pixel-toggle="${platform}" data-pixel-index="${i}" ${p.enabled?'checked':''}>启用</label><button data-delete-pixel="${platform}" data-pixel-index="${i}" class="delete-pixel" aria-label="删除 ${platform==='facebook'?'FB':'TK'} 像素 ${i+1}">删除</button></div>`).join(''):'<div class="pixel-empty">暂无像素<div>点击「添加」填写像素 ID</div></div>';}}
-function settingsChanged(){$('#settings-feedback').textContent='有未保存的修改';$('#settings-feedback').classList.remove('error');}
-document.addEventListener('click',e=>{const add=e.target.closest('[data-add-pixel]');if(add){const platform=add.dataset.addPixel;pixelSettings[platform].push({id:'',enabled:true});renderPixels();settingsChanged();$('#'+platform+'-pixels input[data-pixel-platform]:last-of-type')?.focus();}const del=e.target.closest('[data-delete-pixel]');if(del){pixelSettings[del.dataset.deletePixel].splice(Number(del.dataset.pixelIndex),1);renderPixels();settingsChanged();}});
-document.addEventListener('input',e=>{if(e.target.dataset.pixelPlatform){pixelSettings[e.target.dataset.pixelPlatform][Number(e.target.dataset.pixelIndex)].id=e.target.value;settingsChanged();}});
-document.addEventListener('change',e=>{if(e.target.dataset.pixelToggle){pixelSettings[e.target.dataset.pixelToggle][Number(e.target.dataset.pixelIndex)].enabled=e.target.checked;settingsChanged();}});
-$('#save-settings').onclick=async()=>{for(const platform of ['facebook','tiktok']){const seen=new Set();
-for(const p of pixelSettings[platform]){const id=p.id.trim();const label=platform==='facebook'?'FB':'TikTok';if(!id||!(platform==='facebook'?/^\d+$/:/^[A-Za-z0-9]+$/).test(id)){$('#settings-feedback').textContent=`请填写有效的 ${label} 像素 ID（${platform==='facebook'?'仅数字':'字母或数字'}），或删除空白配置。`;$('#settings-feedback').classList.add('error');return;}if(seen.has(id)){$('#settings-feedback').textContent=`${label} 像素 ID 重复，请检查。`;$('#settings-feedback').classList.add('error');return;}seen.add(id);}}const saved=Object.fromEntries(['facebook','tiktok'].map(platform=>[platform,pixelSettings[platform].map(p=>({...p,id:p.id.trim()}))]));try{await api.saveSettings(saved);pixelSettings=saved;renderPixels();$('#settings-feedback').textContent='已保存 · 客户下次打开页面时生效';$('#settings-feedback').classList.remove('error');toast('像素设置已保存');}catch{$('#settings-feedback').textContent='保存失败，请检查网络或重新登录。';$('#settings-feedback').classList.add('error');}};
-renderPixels();if(pixelSettings.facebook.length||pixelSettings.tiktok.length)$('#settings-feedback').textContent='已加载像素配置';
+const pixelPlatforms={facebook:'FB',tiktok:'TikTok'};
+const pixelDrafts=new Map(['emperor','lyw'].map(product=>[product,{
+  value:null,loading:false,saving:false,dirty:false,error:false,feedback:''
+}]));
+let pixelProduct='emperor';
+
+function renderPixelControls(){
+  const state=pixelDrafts.get(pixelProduct);
+  for(const button of $('#pixel-settings').querySelectorAll('[data-pixel-product]')){
+    const product=button.dataset.pixelProduct;
+    button.setAttribute('aria-pressed',String(product===pixelProduct));
+    button.querySelector('[data-pixel-draft]').hidden=!pixelDrafts.get(product).dirty;
+  }
+  $('#pixel-fields').disabled=!state.value||state.loading||state.saving;
+  $('#retry-pixel-settings').hidden=Boolean(state.value)||!state.error;
+  $('#save-settings').disabled=!state.value||!state.dirty||state.saving;
+  $('#save-settings').textContent=state.saving?'保存中…':'保存像素设置';
+  const feedback=$('#settings-feedback');
+  feedback.textContent=state.feedback;
+  feedback.classList.toggle('error',state.error);
+}
+
+function renderPixels(){
+  const {value,loading}=pixelDrafts.get(pixelProduct);
+  for(const [platform,label] of Object.entries(pixelPlatforms)){
+    const list=$('#'+platform+'-pixels');
+    if(!value?.[platform]?.length){
+      const hint=loading?'正在加载…':value?'暂无像素':'像素未加载';
+      list.innerHTML=`<div class="pixel-empty">${hint}</div>`;
+      continue;
+    }
+    list.innerHTML=value[platform].map((item,index)=>`
+      <div class="pixel-row">
+        <div class="pixel-fields">
+          <label>像素 ID
+            <input data-pixel-platform="${platform}" data-pixel-index="${index}"
+              aria-label="${label} 像素 ID ${index+1}" placeholder="输入${label}像素 ID"
+              value="${esc(item.id)}" maxlength="100" autocomplete="off">
+          </label>
+        </div>
+        <label class="pixel-toggle">
+          <input type="checkbox" data-pixel-toggle="${platform}" data-pixel-index="${index}" ${item.enabled?'checked':''}>启用
+        </label>
+        <button type="button" data-delete-pixel="${platform}" data-pixel-index="${index}"
+          class="delete-pixel" aria-label="删除 ${label} 像素 ${index+1}">删除</button>
+      </div>`).join('');
+  }
+  renderPixelControls();
+}
+
+async function loadPixelSettings(product=pixelProduct){
+  if(!isAdmin())return;
+  const state=pixelDrafts.get(product);
+  if(state.value||state.loading)return;
+  Object.assign(state,{loading:true,error:false,feedback:'正在加载像素设置…'});
+  if(product===pixelProduct)renderPixels();
+  try{
+    const config=await api.loadSettings(product);
+    if(!Object.keys(pixelPlatforms).every(platform=>Array.isArray(config?.[platform]))){
+      throw Error('像素设置返回格式错误。');
+    }
+    state.value=config;
+    state.feedback='';
+  }catch(error){
+    state.error=true;
+    state.feedback=error.message||'无法加载像素设置，请重试。';
+  }finally{
+    state.loading=false;
+    if(product===pixelProduct)renderPixels();
+  }
+}
+
+function pixelSettingsChanged(){
+  Object.assign(pixelDrafts.get(pixelProduct),{dirty:true,error:false,feedback:'有未保存的修改'});
+  renderPixelControls();
+}
+
+const pixelSettingsPanel=$('#pixel-settings');
+pixelSettingsPanel.addEventListener('click',event=>{
+  if(!isAdmin())return;
+  const button=event.target.closest('button');
+  if(!button)return;
+  const {pixelProduct:product,addPixel,deletePixel,pixelIndex}=button.dataset;
+  if(product&&pixelDrafts.has(product)){
+    pixelProduct=product;
+    renderPixels();
+    void loadPixelSettings();
+    return;
+  }
+  const state=pixelDrafts.get(pixelProduct);
+  if(!state.value||state.saving)return;
+  if(addPixel){
+    state.value[addPixel].push({id:'',enabled:true});
+  }else if(deletePixel){
+    state.value[deletePixel].splice(Number(pixelIndex),1);
+  }else return;
+  pixelSettingsChanged();
+  renderPixels();
+  if(addPixel)Array.from($('#'+addPixel+'-pixels').querySelectorAll('[data-pixel-platform]')).at(-1)?.focus();
+});
+
+pixelSettingsPanel.addEventListener('input',event=>{
+  const {pixelPlatform,pixelIndex}=event.target.dataset;
+  const state=pixelDrafts.get(pixelProduct);
+  if(!isAdmin()||!pixelPlatform||!state.value||state.saving)return;
+  state.value[pixelPlatform][Number(pixelIndex)].id=event.target.value;
+  pixelSettingsChanged();
+});
+
+pixelSettingsPanel.addEventListener('change',event=>{
+  const {pixelToggle,pixelIndex}=event.target.dataset;
+  const state=pixelDrafts.get(pixelProduct);
+  if(!isAdmin()||!pixelToggle||!state.value||state.saving)return;
+  state.value[pixelToggle][Number(pixelIndex)].enabled=event.target.checked;
+  pixelSettingsChanged();
+});
+
+$('#retry-pixel-settings').onclick=()=>loadPixelSettings();
+$('#save-settings').onclick=async()=>{
+  const product=pixelProduct;
+  const state=pixelDrafts.get(product);
+  if(!isAdmin()||!state.value||!state.dirty||state.saving)return;
+  const saved={};
+  for(const [platform,label] of Object.entries(pixelPlatforms)){
+    const seen=new Set();
+    saved[platform]=[];
+    for(const item of state.value[platform]){
+      const id=item.id.trim();
+      const format=platform==='facebook'?/^\d+$/:/^[A-Za-z0-9]+$/;
+      if(!format.test(id)||seen.has(id)){
+        state.error=true;
+        state.feedback=seen.has(id)?`${label} 像素 ID 重复，请检查。`:`请填写有效的 ${label} 像素 ID，或删除空白配置。`;
+        renderPixelControls();
+        return;
+      }
+      seen.add(id);
+      saved[platform].push({id,enabled:item.enabled});
+    }
+  }
+  Object.assign(state,{saving:true,error:false,feedback:'正在保存像素设置…'});
+  renderPixelControls();
+  try{
+    await api.saveSettings(saved,product);
+    Object.assign(state,{value:saved,dirty:false,feedback:'像素设置已保存'});
+    toast((product==='emperor'?'帝皇鹿精丸':'龙阳丸')+'像素设置已保存');
+  }catch(error){
+    state.error=true;
+    state.feedback=error.message||'保存像素设置失败，请重试。';
+  }finally{
+    state.saving=false;
+    if(product===pixelProduct)renderPixels();
+    else renderPixelControls();
+  }
+};
 
 async function enterWorkspace(role){
   if(employeeEntry&&role!=='staff')throw Error('此入口供订单处理员工使用。管理员请返回后台首页。');
@@ -513,8 +658,7 @@ async function enterWorkspace(role){
   $('#list-title').firstChild.textContent=ordersLabel()+' ';
   $('[data-list="all"]').textContent=ordersLabel();
   if(isAdmin()){
-    [pixelSettings,staffAccounts]=await Promise.all([api.loadSettings(),api.loadStaff()]);
-    renderPixels();
+    staffAccounts=await api.loadStaff();
     renderStaff();
   }
   setTodayFilter();

@@ -133,3 +133,14 @@ body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
   .order-refresh svg{width:14px;height:14px}
 }
 @media(prefers-reduced-motion:reduce){.order-refresh{transition:none}.order-refresh[aria-busy="true"] svg{animation:none}}
+
+#pixel-settings{margin:24px 0}
+.pixel-product-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pixel-product-bar h2{font-size:17px;color:var(--ink)}
+.pixel-product-switch{display:flex;flex-wrap:wrap;gap:6px;padding:4px;border:1px solid #dce6f5;border-radius:10px;background:#eef3fa}
+.pixel-product-switch button{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:6px 12px;border:1px solid transparent;border-radius:7px;background:transparent;color:#536781;font-size:13px}
+.pixel-product-switch button[aria-pressed="true"]{border-color:#d8e3f6;background:#fff;color:#264f9a;font-weight:650;box-shadow:0 1px 4px #2a4d8c17}
+.pixel-product-switch button:hover{color:#2855aa}
+.pixel-product-switch [data-pixel-draft]{font-size:10px;color:#81571d}
+.pixel-fields-group{min-width:0;padding:0;margin:0;border:0}
+.pixel-settings-actions #retry-pixel-settings{margin-left:auto}
