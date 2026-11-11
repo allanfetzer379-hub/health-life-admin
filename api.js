@@ -113,8 +113,8 @@ export const setStaffEnabled=(id,enabled)=>rpc('admin_set_staff_enabled',{p_user
 export const saveOrder=(id,status,notes,reason)=>rpc('update_order',{p_id:id,p_status:status,p_notes:notes,p_reason:reason||''});
 export const saveNote=(id,note,expectedNotes)=>rpc('save_order_notes',{p_id:id,p_notes:note,p_expected_notes:expectedNotes});
 export const saveStatus=(id,status,reason)=>rpc('save_order_status',{p_id:id,p_status:status,p_reason:reason||''});
-export async function loadSettings(){return rpc('admin_pixel_config');}
-export const saveSettings=value=>rpc('save_pixel_config',{p_value:value});
+export const loadSettings=(product='emperor')=>rpc('admin_product_pixel_config',{p_product:product});
+export const saveSettings=(value,product='emperor')=>rpc('save_product_pixel_config',{p_product:product,p_value:value});
 
 const siteProtectionPath = '/functions/v1/manage-site-protection';
 export const loadSiteProtection = () => request(siteProtectionPath, { auth: true });
