@@ -1,4 +1,4 @@
-import * as api from './api.js?v=20261112-orders';
+import * as api from './api.js?v=20261112-orders-session';
 import { createSiteProtectionSettings } from './site-protection.js?v=20261111-vpn';
 import { startOrderRealtime } from './order-realtime.js?v=20261112-orders';
 import {statuses,dateKey,normalizePhone,csv} from './model.js';

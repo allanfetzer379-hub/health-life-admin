@@ -67,7 +67,7 @@ export async function restoreLogin(){
     throw Error('此账号未获授权或已停用。');
   }catch(error){save(null);throw error;}
 }
-export async function signOut(){try{if(session)await request('/auth/v1/logout',{method:'POST',auth:true});}finally{save(null);}}
+export async function signOut(){try{if(session)await request('/auth/v1/logout?scope=local',{method:'POST',auth:true});}finally{save(null);}}
 export const rpc=(name,body={})=>request('/rest/v1/rpc/'+name,{method:'POST',body,auth:true});
 const adminOrderColumns='id,name,phone,created_at,source,ad_id,ip,device,ip_country,ip_city,product,quantity,price,status,notes,invalid_reason,matches,logs,assigned_staff_id';
 function normalizeOrder(o){
