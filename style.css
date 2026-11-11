@@ -62,3 +62,20 @@ body.locked .sidebar,body.locked .shell{display:none}#auth-panel{min-height:100d
 .order-date{font-size:12px;line-height:1.5}
 .order-title .badge,.source-chip,.ad-chip{font-size:11px}
 @media(max-width:760px){.order-row{padding-top:21px;padding-bottom:21px}.order-title .short-id{font-size:11px}.order-title .customer{font-size:16px}.order-meta{font-size:12px}.order-meta .mono{font-size:14px}.order-date{font-size:11px}}
+
+nav button>#orders-nav-label{display:inline;width:auto;font-size:inherit;font-weight:inherit}
+.staff-panel{max-width:none;margin-bottom:24px}
+.staff-row,.assignment-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.staff-row{max-width:620px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.staff-row strong,.staff-row small{display:block;overflow-wrap:anywhere}
+.staff-row small{margin-top:4px;color:#7187a8}
+.staff-row button,.assignment-row button{flex-shrink:0}
+#staff-feedback{margin-bottom:0}
+#staff-feedback:empty{display:none}
+.assignment-row label{min-width:0;flex:1;margin:0}
+.assignment-row button{min-height:40px}
+body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
+@media(max-width:1350px){
+  body[data-role="staff"] .order-row{grid-template-columns:minmax(0,1fr)}
+  body[data-role="staff"] .row-actions{grid-column:1}
+}
