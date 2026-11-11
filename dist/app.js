@@ -1,5 +1,5 @@
 import * as api from './api.js?v=20261111-staff';
-import { createSiteProtectionSettings } from './site-protection.js?v=20261111-protection';
+import { createSiteProtectionSettings } from './site-protection.js?v=20261111-vpn';
 import {statuses,dateKey,normalizePhone,csv} from './model.js';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const employeeEntry=document.body.dataset.entry==='staff';

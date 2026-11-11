@@ -4,6 +4,7 @@ const allowedOrigins = new Set([
   'https://allanfetzer379-hub.github.io',
 ]);
 const maxAddresses = 30;
+const maxExpressionLength = 4096;
 const ruleRef = 'nk_landing_protection';
 const ruleDescription = 'NK landing protection (managed by NK admin)';
 const customPhase = 'http_request_firewall_custom';
@@ -11,7 +12,8 @@ const hostFilter = 'http.host in {"ateliser.top" "www.ateliser.top"}';
 const phoneFilter = '(http.user_agent contains "iPhone" or (http.user_agent contains "Android" and http.user_agent contains "Mobile"))';
 const botFilter = 'cf.verified_bot_category in {"AI Crawler" "AI Assistant"}';
 
-type Protection = { enabled: boolean; whitelist: string[] };
+type Protection = { enabled: boolean; whitelist: string[]; vpnEnabled: boolean };
+type AppliedProtection = { settings: Protection; vpnExits: string[] };
 type CloudflareRule = { id: string; ref?: string; action: string; enabled: boolean; expression: string };
 type CloudflareRuleset = { id: string; rules?: CloudflareRule[] };
 
@@ -49,10 +51,21 @@ function normalizeWhitelist(values: unknown[]): string[] {
   return [...new Set(addresses as string[])];
 }
 
-function expressionFor(whitelist: string[]): string {
+function readVpnExits(): string[] {
+  const configured = Deno.env.get('NK_TW_VPN_IPS') ?? '';
+  const exits = configured.split(/[\s,]+/).filter(Boolean).map(normalizeAddress);
+  if (!exits.length || exits.some(ip => ip === null)) {
+    throw new RequestError(503, 'VPN 拦截名单尚未配置或包含无效 IP。');
+  }
+  return [...new Set(exits as string[])];
+}
+
+function expressionFor(whitelist: string[], vpnExits: string[] = []): string {
   const checks = [hostFilter];
   if (whitelist.length) checks.push(`not ip.src in {${whitelist.join(' ')}}`);
-  checks.push(`(ip.src.country ne "TW" or not ${phoneFilter} or ${botFilter})`);
+  const blocks = ['ip.src.country ne "TW"', `not ${phoneFilter}`, botFilter];
+  if (vpnExits.length) blocks.push(`ip.src in {${vpnExits.join(' ')}}`);
+  checks.push(`(${blocks.join(' or ')})`);
   return `(${checks.join(' and ')})`;
 }
 
@@ -62,26 +75,41 @@ function managedRule(ruleset: CloudflareRuleset | null): CloudflareRule | null {
   return matches[0] ?? null;
 }
 
-function protectionFrom(rule: CloudflareRule | null): Protection {
-  if (!rule) return { enabled: false, whitelist: [] };
+function protectionFrom(rule: CloudflareRule | null): AppliedProtection {
+  if (!rule) return { settings: { enabled: false, whitelist: [], vpnEnabled: false }, vpnExits: [] };
   try {
     const whitelistClause = /\s+and\s+not\s+ip\.src\s+in\s+\{([^{}]+)\}/;
+    const vpnClause = /\s+or\s+ip\.src\s+in\s+\{([^{}]+)\}/;
     const entries = rule.expression.match(whitelistClause)?.[1];
     const whitelist = entries ? normalizeWhitelist(entries.trim().split(/\s+/)) : [];
-    const base = rule.expression.replace(whitelistClause, '').trim().replace(/\s+/g, ' ');
-    if (rule.action !== 'block' || typeof rule.enabled !== 'boolean' ||
-        base !== expressionFor([])) {
+    const exits = rule.expression.match(vpnClause)?.[1];
+    const vpnExits = exits ? [...new Set(exits.trim().split(/\s+/).map(normalizeAddress))] : [];
+    const expression = rule.expression
+      .replace(whitelistClause, ` and not ip.src in {${whitelist.join(' ')}}`)
+      .replace(vpnClause, ` or ip.src in {${vpnExits.join(' ')}}`)
+      .trim().replace(/\s+/g, ' ');
+    if (rule.action !== 'block' || typeof rule.enabled !== 'boolean' || vpnExits.some(ip => ip === null) ||
+        expression !== expressionFor(whitelist, vpnExits as string[])) {
       throw new Error('Unexpected managed rule');
     }
-    return { enabled: rule.enabled, whitelist };
+    return {
+      settings: { enabled: rule.enabled, whitelist, vpnEnabled: vpnExits.length > 0 },
+      vpnExits: vpnExits as string[],
+    };
   } catch {
     throw new RequestError(409, 'Cloudflare 的 NK 防护规则已在后台外修改，请核对规则后再继续。');
   }
 }
 
-function sameProtection(left: Protection, right: Protection): boolean {
-  return left.enabled === right.enabled && left.whitelist.length === right.whitelist.length &&
-    left.whitelist.every(address => right.whitelist.includes(address));
+function sameAddresses(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every(address => right.includes(address));
+}
+
+function sameProtection(left: AppliedProtection, right: AppliedProtection): boolean {
+  return left.settings.enabled === right.settings.enabled &&
+    left.settings.vpnEnabled === right.settings.vpnEnabled &&
+    sameAddresses(left.settings.whitelist, right.settings.whitelist) &&
+    sameAddresses(left.vpnExits, right.vpnExits);
 }
 
 async function requireAdmin(authorization: string | null) {
@@ -136,7 +164,7 @@ function cloudflareClient() {
   };
 }
 
-async function readProtection(request: Request): Promise<Protection> {
+async function readProtection(request: Request): Promise<Partial<Protection>> {
   const text = await request.text();
   if (text.length > 4096) throw new RequestError(413, '白名单内容过长。');
   let value;
@@ -145,10 +173,17 @@ async function readProtection(request: Request): Promise<Protection> {
   } catch {
     throw new RequestError(400, '防护设置格式无效。');
   }
-  if (typeof value?.enabled !== 'boolean' || !Array.isArray(value.whitelist)) {
+  const hasMasterSettings = value?.enabled !== undefined || value?.whitelist !== undefined;
+  const hasVpnSetting = value?.vpnEnabled !== undefined;
+  if ((!hasMasterSettings && !hasVpnSetting) ||
+      (hasMasterSettings && (typeof value.enabled !== 'boolean' || !Array.isArray(value.whitelist))) ||
+      (hasVpnSetting && typeof value.vpnEnabled !== 'boolean')) {
     throw new RequestError(400, '防护设置格式无效。');
   }
-  return { enabled: value.enabled, whitelist: normalizeWhitelist(value.whitelist) };
+  return {
+    ...(hasMasterSettings ? { enabled: value.enabled, whitelist: normalizeWhitelist(value.whitelist) } : {}),
+    ...(hasVpnSetting ? { vpnEnabled: value.vpnEnabled } : {}),
+  };
 }
 
 Deno.serve(async (request: Request) => {
@@ -164,22 +199,28 @@ Deno.serve(async (request: Request) => {
 
   try {
     await requireAdmin(request.headers.get('authorization'));
-    const next = request.method === 'PUT' ? await readProtection(request) : null;
+    const patch = request.method === 'PUT' ? await readProtection(request) : null;
     const cloudflare = cloudflareClient();
     const entry = await cloudflare();
     const rule = managedRule(entry);
     const current = protectionFrom(rule);
-    if (!next) return reply(current);
+    if (!patch) return reply(current.settings);
 
-    const expression = expressionFor(next.whitelist);
-    if (sameProtection(current, next)) return reply(current);
+    const settings = { ...current.settings, ...patch };
+    const vpnExits = !settings.vpnEnabled ? [] : patch.vpnEnabled ? readVpnExits() : current.vpnExits;
+    const next = { settings, vpnExits };
+    if (sameProtection(current, next)) return reply(current.settings);
+    const expression = expressionFor(settings.whitelist, vpnExits);
+    if (expression.length > maxExpressionLength) {
+      throw new RequestError(502, '防护规则超过 Cloudflare 长度限制，请检查拦截名单。');
+    }
 
     const definition = {
       ref: ruleRef,
       description: ruleDescription,
       expression,
       action: 'block',
-      enabled: next.enabled,
+      enabled: settings.enabled,
     };
     let updated;
     if (!entry) {
@@ -200,7 +241,7 @@ Deno.serve(async (request: Request) => {
     if (!saved || !sameProtection(effective, next)) {
       throw new RequestError(502, 'Cloudflare 尚未确认防护设置，请刷新后核对。');
     }
-    return reply(effective);
+    return reply(effective.settings);
   } catch (error) {
     if (error instanceof RequestError) return reply({ message: error.message }, error.status);
     console.warn('NK protection request failed', error instanceof Error ? error.name : 'unknown');
