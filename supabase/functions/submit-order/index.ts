@@ -1,4 +1,5 @@
 const allowedOrigins=new Set(['https://allanfetzer379-hub.github.io','https://novifors.com','https://www.novifors.com']);
+allowedOrigins.add('https://ateliser.top').add('https://www.ateliser.top');
 Deno.serve(async(req:Request)=>{
  const origin=req.headers.get('origin')||'';
  const headers={'Access-Control-Allow-Origin':allowedOrigins.has(origin)?origin:'null','Access-Control-Allow-Headers':'content-type,apikey,authorization,x-client-info','Access-Control-Allow-Methods':'POST,OPTIONS','Vary':'Origin','Content-Type':'application/json'};
