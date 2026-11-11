@@ -32,6 +32,10 @@ dialog{border:0;padding:0;border-radius:16px;box-shadow:0 20px 100px #102c3940;c
 .protection-switch-row{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .protection-switch-row p{max-width:60ch;color:#53637d;line-height:1.7}
 .protection-switch-row button{flex-shrink:0}
+.protection-vpn-row{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.protection-vpn-row h3{margin:0 0 4px;font-size:14px}
+#toggle-protection-vpn{min-width:76px;min-height:40px}
+#toggle-protection-vpn[aria-checked="true"]{background:#e5f5ec;border-color:#b7dfcb;color:#1f6448}
 .protection-body form{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .protection-body fieldset{min-width:0;border:0;margin:0;padding:0}
 .protection-body label{margin:0;color:var(--ink);font-weight:600;font-size:14px}

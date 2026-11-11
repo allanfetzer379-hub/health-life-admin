@@ -1,6 +1,7 @@
 export function createSiteProtectionSettings(document, { loadSiteProtection, saveSiteProtection }) {
   const status = document.getElementById('protection-status');
   const toggle = document.getElementById('toggle-protection');
+  const vpnToggle = document.getElementById('toggle-protection-vpn');
   const form = document.getElementById('protection-form');
   const fields = document.getElementById('protection-fields');
   const whitelist = document.getElementById('protection-whitelist');
@@ -27,6 +28,9 @@ export function createSiteProtectionSettings(document, { loadSiteProtection, sav
   function render() {
     fields.disabled = busy || loadFailed || !current;
     toggle.disabled = fields.disabled;
+    vpnToggle.disabled = fields.disabled || typeof current?.vpnEnabled !== 'boolean';
+    vpnToggle.setAttribute('aria-checked', String(current?.vpnEnabled === true));
+    vpnToggle.textContent = current?.vpnEnabled ? '已开启' : '已关闭';
     save.disabled = fields.disabled || !whitelistChanged();
     retry.disabled = busy;
     status.textContent = loadFailed ? '读取失败' : current ? (current.enabled ? '已开启' : '已关闭') : '待读取';
@@ -34,13 +38,14 @@ export function createSiteProtectionSettings(document, { loadSiteProtection, sav
     toggle.textContent = current?.enabled ? '关闭防护' : '开启防护';
   }
 
-  function applyResult(result) {
+  function applyResult(result, keepWhitelistDraft = false) {
     if (typeof result?.enabled !== 'boolean' || !Array.isArray(result.whitelist) ||
-        result.whitelist.some(ip => typeof ip !== 'string')) {
+        result.whitelist.some(ip => typeof ip !== 'string') ||
+        (result.vpnEnabled !== undefined && typeof result.vpnEnabled !== 'boolean')) {
       throw new Error('服务器返回的防护设置格式不正确。');
     }
     current = result;
-    whitelist.value = current.whitelist.join('\n');
+    if (!keepWhitelistDraft) whitelist.value = current.whitelist.join('\n');
   }
 
   async function open() {
@@ -63,19 +68,33 @@ export function createSiteProtectionSettings(document, { loadSiteProtection, sav
     }
   }
 
-  async function persist(enabled, switching) {
+  async function persist(action) {
     if (busy || loadFailed || !current) return;
-    const draft = readDraft();
+    const changingVpn = action === 'vpn';
+    const changingProtection = action === 'protection';
     const includesWhitelistChanges = whitelistChanged();
+    const settings = changingVpn
+      ? { vpnEnabled: !current.vpnEnabled }
+      : { enabled: changingProtection ? !current.enabled : current.enabled, whitelist: readDraft() };
     busy = true;
-    showFeedback(switching ? '正在切换防护…' : '正在保存白名单…');
+    showFeedback({ vpn: '正在切换 VPN 拦截…', protection: '正在切换防护…', whitelist: '正在保存白名单…' }[action]);
     render();
     try {
-      applyResult(await saveSiteProtection({ enabled, whitelist: draft }));
-      const changedStatus = current.enabled ? '防护已开启' : '防护已关闭';
-      showFeedback(switching
-        ? changedStatus + (includesWhitelistChanges ? '，白名单已同步保存。' : '。')
-        : '白名单已保存。');
+      const result = await saveSiteProtection(settings);
+      if (changingVpn && result?.vpnEnabled !== settings.vpnEnabled) {
+        throw new Error('服务尚未确认 VPN 拦截设置，请刷新后核对。');
+      }
+      applyResult(result, changingVpn && includesWhitelistChanges);
+      if (changingVpn) {
+        const vpnStatus = current.vpnEnabled ? 'VPN 拦截已开启' : 'VPN 拦截已关闭';
+        const pending = current.vpnEnabled && !current.enabled ? '，将在落地页防护开启后生效' : '';
+        showFeedback(vpnStatus + pending + '。' + (includesWhitelistChanges ? '白名单有未保存的修改。' : ''));
+      } else if (changingProtection) {
+        const protectionStatus = current.enabled ? '防护已开启' : '防护已关闭';
+        showFeedback(protectionStatus + (includesWhitelistChanges ? '，白名单已同步保存。' : '。'));
+      } else {
+        showFeedback('白名单已保存。');
+      }
     } catch (error) {
       showFeedback(error.message || '保存失败，请重试。', true);
     } finally {
@@ -91,10 +110,13 @@ export function createSiteProtectionSettings(document, { loadSiteProtection, sav
   });
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (whitelistChanged()) persist(current.enabled, false);
+    if (whitelistChanged()) persist('whitelist');
   });
   toggle.addEventListener('click', () => {
-    if (current) persist(!current.enabled, true);
+    persist('protection');
+  });
+  vpnToggle.addEventListener('click', () => {
+    if (typeof current?.vpnEnabled === 'boolean') persist('vpn');
   });
   render();
   return { open };
