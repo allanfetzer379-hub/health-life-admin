@@ -1,2 +1,5 @@
 [functions.submit-order]
 verify_jwt = true
+
+[functions.manage-site-protection]
+verify_jwt = true
