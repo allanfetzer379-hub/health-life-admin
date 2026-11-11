@@ -83,3 +83,53 @@ body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
   body[data-role="staff"] .order-row{grid-template-columns:minmax(0,1fr)}
   body[data-role="staff"] .row-actions{grid-column:1}
 }
+
+.panel-heading{gap:16px}
+.geo-credit{font-size:11px;color:#63758e;text-decoration:underline;text-decoration-color:#ccd7e8;text-underline-offset:3px}
+.geo-credit:hover,.geo-credit:focus-visible{color:#2458b4}
+.order-sync{display:flex;align-items:center;gap:13px;flex-shrink:0}
+.order-sync-details{display:grid;gap:3px;justify-items:end;white-space:nowrap;font-size:11px;color:#5f708b;line-height:1.35}
+#order-live-state{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:#5f708b}
+#order-live-state i{width:7px;height:7px;border-radius:50%;background:#8b9bb2}
+#order-live-state[data-state="live"]{color:#276849}
+#order-live-state[data-state="live"] i{background:#329369;box-shadow:0 0 0 3px #e5f4ec}
+#order-live-state[data-state="offline"],#order-live-state[data-state="reconnecting"]{color:#8b6225}
+#order-live-state[data-state="offline"] i,#order-live-state[data-state="reconnecting"] i{background:#b2833d}
+.order-refresh{display:inline-flex;justify-content:center;align-items:center;gap:7px;min-width:108px;min-height:42px;padding:8px 13px;border:1px solid #244d9d;border-radius:9px;background:#2855aa;color:#fff;font-size:12px;font-weight:650;white-space:nowrap;box-shadow:0 2px 5px #2a4d8c24;transition:background .15s ease,box-shadow .15s ease}
+.order-refresh:hover:not(:disabled){background:#21498f;box-shadow:0 4px 9px #2a4d8c32}
+.order-refresh:focus-visible{outline:2px solid #6f9ae2;outline-offset:3px}
+.order-refresh svg{width:17px;height:17px;flex-shrink:0}
+.order-refresh[aria-busy="true"] svg{animation:order-refresh-spin .85s linear infinite}
+@keyframes order-refresh-spin{to{transform:rotate(360deg)}}
+.order-row.is-new-order{background:#f1f7ff;box-shadow:inset 3px 0 #4c7dd0}
+.order-summary{min-width:0}
+.order-row .row-actions,.order-row .order-check{align-self:start}
+.order-row .order-check{margin-top:5px}
+.order-location{color:#5c728e}
+.order-note{margin-top:10px;max-width:620px;padding:8px 10px;border:1px solid #e0e8f3;border-radius:8px;background:#f6f9fd;color:#253956}
+.order-note-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.order-note-heading strong{font-size:11px;color:#587294}
+.order-note button{padding:3px 7px;min-height:26px;border-radius:5px;font-size:11px;line-height:1.25}
+.order-note .note-edit{background:transparent;border-color:transparent;color:#285bb2;font-weight:600}
+.order-note .note-edit:hover,.order-note .note-expand:hover{background:#e5eefb}
+.order-note-text{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.55}
+.order-note-text.is-collapsed{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.order-note-text.is-empty{color:#677a96;font-size:12px}
+.order-note .note-expand{margin-top:4px;padding-left:0;border:0;background:transparent;color:#285bb2}
+.order-note-editor{display:grid;gap:6px;margin-top:4px}
+.order-note textarea{display:block;width:100%;min-height:88px;padding:8px 9px;border:1px solid #becde2;border-radius:6px;background:#fff;color:#253956;font:inherit;line-height:1.55;resize:vertical}
+.order-note textarea:focus{outline:2px solid #a8c3ef;outline-offset:1px}
+.order-note-actions{display:flex;flex-wrap:wrap;gap:6px}
+.order-note-actions .primary{background:#2855aa;color:#fff;border-color:#244d9d}
+.order-note-error{margin:2px 0;color:#9c3a3a;font-size:12px;line-height:1.45}
+.order-note-conflict{padding:7px 8px;border-radius:6px;background:#fff4e3;color:#725323}
+.order-note-conflict p{margin-bottom:6px}
+.detail-section .order-note{max-width:none}
+@media(max-width:600px){
+  .panel-heading{gap:8px}
+  .order-sync{gap:7px;flex-wrap:wrap;justify-content:flex-end}
+  .order-sync-details{font-size:10px}
+  .order-refresh{min-width:86px;min-height:38px;padding:6px 8px;gap:4px}
+  .order-refresh svg{width:14px;height:14px}
+}
+@media(prefers-reduced-motion:reduce){.order-refresh{transition:none}.order-refresh[aria-busy="true"] svg{animation:none}}
