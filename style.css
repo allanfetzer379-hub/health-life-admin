@@ -222,3 +222,88 @@ body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
     min-height: 44px;
   }
 }
+
+
+body[data-role="admin"] .table-tools {
+  flex-wrap: wrap;
+  height: auto;
+}
+
+.export-tools,
+.export-actions,
+.pagination {
+  flex-wrap: wrap;
+}
+
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.export-actions .order-trash-control {
+  border-color: #ebc3c7;
+  background: #fff5f5;
+  color: #a22331;
+  font-weight: 600;
+}
+
+.export-actions .order-trash-control:not(:disabled):hover {
+  border-color: #d9929a;
+  background: #ffe7e8;
+}
+
+.export-actions .order-trash-control:disabled {
+  opacity: 1;
+  border-color: #e9dee0;
+  background: #faf6f6;
+  color: #785a60;
+}
+
+.pagination {
+  gap: 8px 12px;
+}
+
+.pagination .pagination-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.pagination .page-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #536781;
+  white-space: nowrap;
+}
+
+.pagination .page-size select {
+  width: auto;
+  min-height: 32px;
+  margin: 0;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .export-tools {
+    gap: 6px 10px;
+  }
+
+  .export-actions {
+    margin-left: auto;
+  }
+
+  .export-actions button,
+  .pagination .page-size select {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 420px) {
+  .export-actions {
+    flex: 1 0 100%;
+  }
+}
