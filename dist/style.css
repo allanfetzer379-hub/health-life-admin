@@ -144,3 +144,81 @@ body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
 .pixel-product-switch [data-pixel-draft]{font-size:10px;color:#81571d}
 .pixel-fields-group{min-width:0;padding:0;margin:0;border:0}
 .pixel-settings-actions #retry-pixel-settings{margin-left:auto}
+
+.order-row.is-deleted {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.order-row.is-deleted .customer {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1350px) {
+  .order-row.is-deleted {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .order-row.is-deleted .row-actions {
+    grid-column: 1;
+    justify-content: flex-end;
+  }
+}
+
+.order-trash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.order-trash-actions .order-trash-control,
+.row-actions .order-trash-control {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #ebc3c7;
+  border-radius: 5px;
+  background: #fff5f5;
+  color: #a22331;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.order-trash-control:not(:disabled):hover {
+  border-color: #d9929a;
+  background: #ffe7e8;
+}
+
+.order-trash-actions .order-trash-restore,
+.row-actions .order-trash-restore {
+  border-color: #bbdccf;
+  background: #eef8f3;
+  color: #226048;
+}
+
+.order-trash-restore:not(:disabled):hover {
+  border-color: #89bea9;
+  background: #dff1e8;
+}
+
+@media (max-width: 760px) {
+  body[data-role="admin"] .table-tools,
+  body[data-role="admin"] .order-tabs {
+    height: auto;
+  }
+
+  body[data-role="admin"] .order-tabs {
+    flex-wrap: wrap;
+    gap: 0 14px;
+    max-width: 100%;
+    min-height: 48px;
+  }
+
+  body[data-role="admin"] .order-tabs button,
+  .order-trash-actions .order-trash-control,
+  .row-actions .order-trash-control {
+    min-height: 44px;
+  }
+}

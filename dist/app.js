@@ -1,12 +1,16 @@
-import * as api from './api.js?v=20261112-product-pixels';
+import * as api from './api.js?v=20261116-order-trash';
 import { createSiteProtectionSettings } from './site-protection.js?v=20261111-vpn';
 import { startOrderRealtime } from './order-realtime.js?v=20261112-orders';
-import {statuses,dateKey,normalizePhone,csv} from './model.js';
+import {statuses,dateKey,normalizePhone,csv,ordersInDateRange} from './model.js?v=20261116-date-summary';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const employeeEntry=document.body.dataset.entry==='staff';
 const siteProtection = createSiteProtectionSettings(document, api);
 let orders=[];let page=1,view='orders',selected=new Set(),activeId=null,toastTimer,listMode='all',displayIds=new Map();const PAGE=10;
 let currentRole=null;
+let deletedOrders=[];
+let deletedLoading=false;
+let deletedLoadError='';
+const changingDeletedOrders=new Set();
 let staffAccounts=[];
 const noteDrafts=new Map();
 const expandedNotes=new Set();
@@ -16,6 +20,8 @@ let orderLoadQueue=Promise.resolve();
 let stopOrderRealtime;
 let connectedOnce=false;
 const isAdmin=()=>currentRole==='admin';
+const viewingDeletedOrders=()=>isAdmin()&&listMode==='deleted';
+const listOrders=()=>viewingDeletedOrders()?deletedOrders:orders;
 const ordersLabel=()=>currentRole==='staff'?'我的订单':'全部订单';
 const time=d=>new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(d));
 function makeDisplayIds(rows){const map=new Map(),counts=new Map();[...rows].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id)).forEach(o=>{const day=dateKey(o.createdAt),next=(counts.get(day)||0)+1;counts.set(day,next);map.set(o.id,`NK-${day.replaceAll('-','')}-${String(next).padStart(3,'0')}`);});return map;}
@@ -125,6 +131,7 @@ function renderUpdatedOrders(changedIds){
 function reloadOrders(){
   return enqueueOrderLoad(async()=>{
     orders=await api.loadOrders(currentRole);
+    if(viewingDeletedOrders())await readDeletedOrders();
     renderUpdatedOrders();
     markOrdersSynced();
   });
@@ -149,9 +156,57 @@ function applyOrderChanges({ids,newIds=[]}){
       },7000);
       toast('收到 '+incoming.length+' 笔新订单');
     }
+    if(viewingDeletedOrders())await readDeletedOrders();
     renderUpdatedOrders(new Set(ids));
     markOrdersSynced();
   });
+}
+
+async function readDeletedOrders(){
+  try{
+    deletedOrders=await api.loadDeletedOrders();
+    deletedLoadError='';
+  }catch(error){
+    deletedLoadError=error.message||'读取已删除订单失败，请点刷新重试。';
+  }
+}
+
+function openDeletedOrders(){
+  if(deletedLoading)return;
+  deletedLoading=true;
+  render();
+  void enqueueOrderLoad(readDeletedOrders).finally(()=>{
+    deletedLoading=false;
+    render();
+  });
+}
+
+async function changeOrderDeleted(id,deleted){
+  if(!isAdmin()||changingDeletedOrders.has(id))return;
+  const current=(deleted?orders:deletedOrders).find(order=>order.id===id);
+  if(!current)return;
+  if(deleted&&!window.confirm('将订单 '+displayId(current)+' 移入「已删除订单」？之后可以恢复。'))return;
+  changingDeletedOrders.add(id);
+  render();
+  try{
+    await api.setOrderDeleted(id,deleted);
+    await enqueueOrderLoad(()=>{
+      if(deleted)orders=orders.filter(order=>order.id!==id);
+      else deletedOrders=deletedOrders.filter(order=>order.id!==id);
+      renderUpdatedOrders(new Set([id]));
+    });
+    try{
+      await applyOrderChanges({ids:[id]});
+      toast(deleted?'已移入「已删除订单」':'订单已恢复');
+    }catch{
+      toast(deleted?'订单已删除，列表同步失败':'订单已恢复，列表同步失败');
+    }
+  }catch(error){
+    toast(error.message||(deleted?'删除失败，请重试':'恢复失败，请重试'));
+  }finally{
+    changingDeletedOrders.delete(id);
+    render();
+  }
 }
 
 async function connectOrderRealtime(role){
@@ -290,20 +345,22 @@ function bindNoteActions(){
   window.addEventListener('resize',showExpandableNotes);
 }
 
-function filtered(){const q=$('#search').value.trim().toLowerCase();return orders.filter(o=>(listMode==='all'||(listMode==='pending'?['new','contacted'].includes(o.status):o.status==='completed'))&&(!q||[o.name,o.phone,o.id,displayId(o),normalizePhone(o.phone)].some(v=>v.toLowerCase().includes(q))||(/[0-9]/.test(q)&&normalizePhone(o.phone).includes(normalizePhone(q))))&&(!$('#status').value||o.status===$('#status').value)&&(!$('#source').value||o.source===$('#source').value)&&(!$('#ad-id').value.trim()||String(o.adId||'').toLowerCase().includes($('#ad-id').value.trim().toLowerCase()))&&($('#duplicate').value!=='yes'||o.isDuplicate)&&($('#duplicate').value!=='no'||!o.isDuplicate)&&(!$('#from').value||dateKey(o.createdAt)>=$('#from').value)&&(!$('#to').value||dateKey(o.createdAt)<=$('#to').value)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+function filtered(dateOrders=ordersInDateRange(listOrders(),$('#from').value,$('#to').value)){const q=$('#search').value.trim().toLowerCase();return dateOrders.filter(o=>(listMode==='all'||viewingDeletedOrders()||(listMode==='pending'?['new','contacted'].includes(o.status):o.status==='completed'))&&(!q||[o.name,o.phone,o.id,displayId(o),normalizePhone(o.phone)].some(v=>v.toLowerCase().includes(q))||(/[0-9]/.test(q)&&normalizePhone(o.phone).includes(normalizePhone(q))))&&(!$('#status').value||o.status===$('#status').value)&&(!$('#source').value||o.source===$('#source').value)&&(!$('#ad-id').value.trim()||String(o.adId||'').toLowerCase().includes($('#ad-id').value.trim().toLowerCase()))&&($('#duplicate').value!=='yes'||o.isDuplicate)&&($('#duplicate').value!=='no'||!o.isDuplicate)).sort((a,b)=>viewingDeletedOrders()?b.deletedAt.localeCompare(a.deletedAt)||a.id.localeCompare(b.id):b.createdAt.localeCompare(a.createdAt));}
 function renderOrderRow(order){
   const id=esc(order.id);
   const location=orderLocation(order);
+  const deleted=Boolean(order.deletedAt);
+  const busy=changingDeletedOrders.has(order.id)?'disabled':'';
   const reasons=['重粉','电话错误','无法联系','无购买意愿','其他'];
   const duplicateReasons=[...new Set(order.matches.map(match=>match.reason))].join(' / ');
   const statusText=statuses[order.status]+(order.status==='invalid'&&order.invalidReason?' · '+order.invalidReason:'');
   const quickStatuses=['contacted','confirmed','shipped','completed'].map(status=>
     `<button data-status="${status}" data-id="${id}" class="quick-status${order.status===status?' is-current':''}" aria-pressed="${order.status===status}">${statuses[status]}</button>`).join('');
-  return `<article class="order-row${highlightedOrders.has(order.id)?' is-new-order':''}" data-order="${id}">
-    <input class="order-check" type="checkbox" data-select="${id}" aria-label="选择 ${id}" ${selected.has(order.id)?'checked':''} ${isAdmin()?'':'hidden'}>
+  return `<article class="order-row${deleted?' is-deleted':highlightedOrders.has(order.id)?' is-new-order':''}" data-order="${id}">
+    ${deleted?'':`<input class="order-check" type="checkbox" data-select="${id}" aria-label="选择 ${id}" ${selected.has(order.id)?'checked':''} ${isAdmin()?'':'hidden'}>`}
     <div class="order-summary">
       <div class="order-title">
-        <span class="short-id">${esc(displayId(order))}</span><button class="customer" data-detail="${id}">${esc(order.name)}</button>
+        <span class="short-id">${esc(displayId(order))}</span>${deleted?`<span class="customer">${esc(order.name)}</span>`:`<button class="customer" data-detail="${id}">${esc(order.name)}</button>`}
         <span class="badge ${order.isDuplicate?'dup':'fresh'}" title="${esc(duplicateReasons)}">${order.isDuplicate?'重粉':'新客户'}</span>
         <span class="source-chip">${esc(order.source)}</span><span class="ad-chip">广告 ID：${esc(order.adId||'未记录')}</span>
       </div>
@@ -314,9 +371,10 @@ function renderOrderRow(order){
       <div class="order-date"><span>${dateKey(order.createdAt)} ${time(order.createdAt)}</span>
         ${location?`<span class="order-location">IP 地区 · ${esc(location)}</span>`:''}
       </div>
-      ${notePanel(order)}
+      ${deleted?`<div class="order-date">删除时间 · ${dateKey(order.deletedAt)} ${time(order.deletedAt)}</div>`:notePanel(order)}
     </div>
     <div class="row-actions">
+      ${deleted?`<div class="order-trash-actions"><button type="button" class="order-trash-control order-trash-restore" data-restore-order="${id}" ${busy}>恢复订单</button></div>`:`
       <div class="status-actions">${quickStatuses}
         <select class="invalid-reason" data-reason="${id}" aria-label="${id} 无效原因">
           <option value="">无效原因</option>${reasons.map(reason=>`<option ${order.invalidReason===reason?'selected':''}>${reason}</option>`).join('')}
@@ -326,23 +384,36 @@ function renderOrderRow(order){
       <div class="utility-actions">
         <select class="other-status" data-other-status="${id}" aria-label="${id} 其他状态"><option value="">其他状态</option><option value="new">待联系</option><option value="cancelled">已取消</option></select>
         <button class="copy-order" data-copy="${id}">一键复制</button><button class="detail-button" data-detail="${id}">详情</button>
-      </div>
+        ${isAdmin()?`<div class="order-trash-actions"><button type="button" class="order-trash-control" data-trash-order="${id}" ${busy}>删除订单</button></div>`:''}
+      </div>`}
     </div>
   </article>`;
 }
 
 function render(){
-  const all=filtered();
+  const from=$('#from').value;
+  const to=$('#to').value;
+  const trash=viewingDeletedOrders();
+  const dateOrders=ordersInDateRange(listOrders(),from,to);
+  const all=filtered(dateOrders);
+  $('#list-title').firstChild.textContent=(trash?'已删除订单':ordersLabel())+' ';
+  $('#stats').hidden=trash;
+  $('.export-tools').hidden=trash||!isAdmin();
   const pages=Math.max(1,Math.ceil(all.length/PAGE));
   page=Math.max(1,Math.min(page,pages));
   const rows=all.slice((page-1)*PAGE,page*PAGE);
   const today=dateKey(Date.now());
+  const isToday=from===today&&to===today;
+  const hasRange=!!(from||to);
+  const orderLabel=isToday?'今日订单':hasRange?'区间订单':'全部订单';
+  const dateScope=isToday?'今日':hasRange?'所选日期内':'';
+  const orderDetail=dateScope+(isAdmin()?'收到的全部订单':'分配给我的订单');
   const stats=[
-    ['今日订单',orders.filter(order=>dateKey(order.createdAt)===today).length,isAdmin()?'今日收到的全部订单':'今日分配给我的订单','▤'],
-    ['待联系',orders.filter(order=>order.status==='new').length,'及时联系，把握每次机会','◷'],
-    ['首次提交',orders.filter(order=>!order.isDuplicate).length,'独立客户首次下单','↗'],
-    ['已确认',orders.filter(order=>order.status==='confirmed').length,'已确认的客户订单','✓'],
-    ['已完成',orders.filter(order=>order.status==='completed').length,'订单跟进已完成','✓']
+    [orderLabel,dateOrders.length,orderDetail,'▤'],
+    ['待联系',dateOrders.filter(order=>order.status==='new').length,'及时联系，把握每次机会','◷'],
+    ['首次提交',dateOrders.filter(order=>!order.isDuplicate).length,'独立客户首次下单','↗'],
+    ['已确认',dateOrders.filter(order=>order.status==='confirmed').length,'已确认的客户订单','✓'],
+    ['已完成',dateOrders.filter(order=>order.status==='completed').length,'订单跟进已完成','✓']
   ];
   $('#nav-total').textContent=orders.length;
   $('#stats').innerHTML=stats.map(([label,total,detail,icon],index)=>
@@ -353,9 +424,17 @@ function render(){
   showExpandableNotes();
   if(focus)focusNoteInput('list',focus.id,focus);
   $('#empty').hidden=!!all.length;
-  $('#empty b').textContent=orders.length?'没有符合条件的订单':'暂无订单';
-  $('#empty p').textContent=orders.length?'试着调整搜索内容或清除筛选。':isAdmin()?'客户提交订单后将显示在这里。':'分配给你的订单会显示在这里。';
-  $('#empty-clear').hidden=!orders.length;
+  if(trash&&(deletedLoading||deletedLoadError)){
+    $('#empty b').textContent=deletedLoading?'正在读取已删除订单…':'读取已删除订单失败';
+    $('#empty p').textContent=deletedLoading?'':'请点「刷新订单」重试。';
+    $('#empty-clear').hidden=true;
+  }else{
+    const hasOrders=listOrders().length>0;
+    $('#empty b').textContent=hasOrders?'没有符合条件的订单':trash?'暂无已删除订单':'暂无订单';
+    $('#empty p').textContent=hasOrders?'试着调整搜索内容或清除筛选。'
+      :trash?'移入此分类的订单可在这里恢复。':isAdmin()?'客户提交订单后将显示在这里。':'分配给你的订单会显示在这里。';
+    $('#empty-clear').hidden=!hasOrders;
+  }
   $('#page-label').textContent=`共 ${all.length} 笔${all.length?` · 显示 ${(page-1)*PAGE+1}–${Math.min(page*PAGE,all.length)} 笔`:''}`;
   $('#page-number').textContent=`${page} / ${pages}`;
   $('#prev').disabled=page===1;
@@ -365,8 +444,8 @@ function render(){
   $('#select-page').indeterminate=rows.some(order=>selected.has(order.id))&&!$('#select-page').checked;
 }
 function clear(){for(const id of ['search','ad-id','status','duplicate','source','from','to'])$('#'+id).value='';
-document.querySelectorAll('[data-days]').forEach(b=>b.classList.toggle('chosen',b.dataset.days==='all'));page=1;listMode='all';
-document.querySelectorAll('[data-list]').forEach(b=>b.classList.toggle('active',b.dataset.list==='all'));selected.clear();render();}
+document.querySelectorAll('[data-days]').forEach(b=>b.classList.toggle('chosen',b.dataset.days==='all'));page=1;listMode=viewingDeletedOrders()?'deleted':'all';
+document.querySelectorAll('[data-list]').forEach(b=>b.classList.toggle('active',b.dataset.list===listMode));selected.clear();render();}
 function duplicateDetails(order){
   if(!isAdmin())return '';
   const matches=order.matches.map(match=>{
@@ -436,12 +515,21 @@ function openDetail(id,preserve=false){
   };
 }
 $('#today').textContent=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Taipei',month:'long',day:'numeric',weekday:'long'}).format(Date.now());Object.entries(statuses).forEach(([v,l])=>$('#status').add(new Option(l,v)));
-document.addEventListener('click',e=>{const statusButton=e.target.closest('[data-status]');if(statusButton)updateStatus(statusButton.dataset.id,statusButton.dataset.status);const invalid=e.target.closest('[data-invalid]');if(invalid){const reason=invalid.closest('.order-row').querySelector('[data-reason]').value;if(!reason){toast('请先选择无效原因');return;}updateStatus(invalid.dataset.invalid,'invalid',reason);}const copy=e.target.closest('[data-copy]');if(copy){const o=orders.find(x=>x.id===copy.dataset.copy);copyText(`订单编号：${displayId(o)}\n下单时间：${dateKey(o.createdAt)} ${time(o.createdAt)}\n商品：${o.product} × ${o.quantity}\n订单金额：NT$ ${o.price.toLocaleString()}\n姓名：${o.name}\n电话：${o.phone}`);}const tab=e.target.closest('[data-list]');if(tab){listMode=tab.dataset.list;page=1;selected.clear();
-document.querySelectorAll('[data-list]').forEach(b=>b.classList.toggle('active',b===tab));if(tab.dataset.list==='all')setTodayFilter();render();}const close=e.target.closest('[data-close]');if(close)$('#'+close.dataset.close).close();const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const nav=e.target.closest('[data-view]');if(nav&&(nav.dataset.view==='orders'||isAdmin())){view=nav.dataset.view;
-document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===nav));$('#orders-view').hidden=view==='settings';$('#settings-view').hidden=view!=='settings';$('#crumb').textContent=view==='settings'?'系统设置':ordersLabel();$('#page-title').textContent='订单工作台';$('#list-title').firstChild.textContent=ordersLabel()+' ';clear();if(view==='settings'){siteProtection.open();void loadPixelSettings();refreshStaff().catch(error=>staffFeedback(error.message,true));}else{setTodayFilter();render();}}const quick=e.target.closest('[data-days]');if(quick){const d=quick.dataset.days;const now=new Date();const end=dateKey(now);let start=end;if(d!=='all'){now.setDate(now.getDate()-(d==='1'?1:d==='7'?6:0));start=dateKey(now);}$('#from').value=d==='all'?'':start;$('#to').value=d==='all'?'':d==='1'?start:end;
+document.addEventListener('click',e=>{
+const trashButton=e.target.closest('[data-trash-order],[data-restore-order]');
+if(trashButton){
+  const deleted=trashButton.hasAttribute('data-trash-order');
+  void changeOrderDeleted(trashButton.dataset.trashOrder||trashButton.dataset.restoreOrder,deleted);
+  return;
+}
+const statusButton=e.target.closest('[data-status]');if(statusButton)updateStatus(statusButton.dataset.id,statusButton.dataset.status);const invalid=e.target.closest('[data-invalid]');if(invalid){const reason=invalid.closest('.order-row').querySelector('[data-reason]').value;if(!reason){toast('请先选择无效原因');return;}updateStatus(invalid.dataset.invalid,'invalid',reason);}const copy=e.target.closest('[data-copy]');if(copy){const o=orders.find(x=>x.id===copy.dataset.copy);copyText(`订单编号：${displayId(o)}\n下单时间：${dateKey(o.createdAt)} ${time(o.createdAt)}\n商品：${o.product} × ${o.quantity}\n订单金额：NT$ ${o.price.toLocaleString()}\n姓名：${o.name}\n电话：${o.phone}`);}const tab=e.target.closest('[data-list]');if(tab){if(tab.dataset.list==='deleted'&&!isAdmin())return;listMode=tab.dataset.list;page=1;selected.clear();
+document.querySelectorAll('[data-list]').forEach(b=>b.classList.toggle('active',b===tab));
+if(viewingDeletedOrders()){clear();openDeletedOrders();}
+else {if(listMode==='all')setTodayFilter();render();}}const close=e.target.closest('[data-close]');if(close)$('#'+close.dataset.close).close();const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const nav=e.target.closest('[data-view]');if(nav&&(nav.dataset.view==='orders'||isAdmin())){view=nav.dataset.view;
+document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===nav));$('#orders-view').hidden=view==='settings';$('#settings-view').hidden=view!=='settings';$('#crumb').textContent=view==='settings'?'系统设置':ordersLabel();$('#page-title').textContent='订单工作台';$('#list-title').firstChild.textContent=ordersLabel()+' ';listMode='all';clear();if(view==='settings'){siteProtection.open();void loadPixelSettings();refreshStaff().catch(error=>staffFeedback(error.message,true));}else{setTodayFilter();render();}}const quick=e.target.closest('[data-days]');if(quick){const d=quick.dataset.days;const now=new Date();const end=dateKey(now);let start=end;if(d!=='all'){now.setDate(now.getDate()-(d==='1'?1:d==='7'?6:0));start=dateKey(now);}$('#from').value=d==='all'?'':start;$('#to').value=d==='all'?'':d==='1'?start:end;
 document.querySelectorAll('[data-days]').forEach(b=>b.classList.toggle('chosen',b===quick));page=1;selected.clear();render();}});
 for(const id of ['search','ad-id','status','duplicate','source','from','to'])$('#'+id).addEventListener(['search','ad-id'].includes(id)?'input':'change',()=>{page=1;selected.clear();if(['from','to'].includes(id))document.querySelectorAll('[data-days]').forEach(b=>b.classList.remove('chosen'));render();});
-$('#rows').onchange=e=>{if(e.target.dataset.otherStatus&&e.target.value){updateStatus(e.target.dataset.otherStatus,e.target.value);return;}const id=e.target.dataset.select;if(id){e.target.checked?selected.add(id):selected.delete(id);render();}};$('#select-page').onchange=e=>{filtered().slice((page-1)*PAGE,page*PAGE).forEach(o=>e.target.checked?selected.add(o.id):selected.delete(o.id));render();};$('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};$('#clear').onclick=clear;$('#empty-clear').onclick=clear;$('#refresh').onclick=refreshOrdersManually;$('#export').onclick=()=>{if(!isAdmin())return;const rows=selected.size?orders.filter(o=>selected.has(o.id)):filtered();if(!rows.length){toast('目前没有可导出的订单');return;}const a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv(rows)],{type:'text/csv;charset=utf-8'}));a.href=url;a.download=`NK-orders-${dateKey(Date.now())}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`已导出 ${rows.length} 笔订单`);};render();
+$('#rows').onchange=e=>{if(e.target.dataset.otherStatus&&e.target.value){updateStatus(e.target.dataset.otherStatus,e.target.value);return;}const id=e.target.dataset.select;if(id){e.target.checked?selected.add(id):selected.delete(id);render();}};$('#select-page').onchange=e=>{filtered().slice((page-1)*PAGE,page*PAGE).forEach(o=>e.target.checked?selected.add(o.id):selected.delete(o.id));render();};$('#prev').onclick=()=>{page--;render();};$('#next').onclick=()=>{page++;render();};$('#clear').onclick=clear;$('#empty-clear').onclick=clear;$('#refresh').onclick=refreshOrdersManually;$('#export').onclick=()=>{if(!isAdmin()||viewingDeletedOrders())return;const rows=selected.size?orders.filter(o=>selected.has(o.id)):filtered();if(!rows.length){toast('目前没有可导出的订单');return;}const a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv(rows)],{type:'text/csv;charset=utf-8'}));a.href=url;a.download=`NK-orders-${dateKey(Date.now())}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`已导出 ${rows.length} 笔订单`);};render();
 
 
 
@@ -457,7 +545,7 @@ async function refreshOrdersManually(){
   setRefreshButton(true);
   try{
     await reloadOrders();
-    toast('订单已同步');
+    toast(viewingDeletedOrders()&&deletedLoadError?'已删除订单同步失败，请重试':'订单已同步');
   }catch{toast('同步失败，请重试');}
   finally{setRefreshButton(false);}
 }
@@ -650,7 +738,8 @@ async function enterWorkspace(role){
   currentRole=role;
   document.body.dataset.role=role;
   $('[data-view="settings"]').hidden=!isAdmin();
-  $('.export-tools').hidden=!isAdmin();
+  const deletedTab=$('[data-list="deleted"]');
+  if(deletedTab)deletedTab.hidden=!isAdmin();
   $('#role-avatar').textContent=isAdmin()?'管':'员';
   $('#role-label').textContent=isAdmin()?'管理员':'订单处理';
   $('#orders-nav-label').textContent=ordersLabel();
