@@ -1,4 +1,4 @@
-import * as api from './api.js?v=20261116-order-batch';
+import * as api from './api.js?v=20261116-staff-trash';
 import { createSiteProtectionSettings } from './site-protection.js?v=20261111-vpn';
 import { startOrderRealtime } from './order-realtime.js?v=20261112-orders';
 import {statuses,dateKey,normalizePhone,csv,ordersInDateRange} from './model.js?v=20261116-date-summary';
@@ -20,7 +20,9 @@ let orderLoadQueue=Promise.resolve();
 let stopOrderRealtime;
 let connectedOnce=false;
 const isAdmin=()=>currentRole==='admin';
-const viewingDeletedOrders=()=>isAdmin()&&listMode==='deleted';
+const canViewDeletedOrders=()=>isAdmin()||currentRole==='staff';
+const viewingDeletedOrders=()=>canViewDeletedOrders()&&listMode==='deleted';
+const staffTrash=()=>viewingDeletedOrders()&&currentRole==='staff';
 const listOrders=()=>viewingDeletedOrders()?deletedOrders:orders;
 const ordersLabel=()=>currentRole==='staff'?'我的订单':'全部订单';
 const time=d=>new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(d));
@@ -164,7 +166,7 @@ function applyOrderChanges({ids,newIds=[]}){
 
 async function readDeletedOrders(){
   try{
-    deletedOrders=await api.loadDeletedOrders();
+    deletedOrders=await api.loadDeletedOrders(currentRole);
     deletedLoadError='';
   }catch(error){
     deletedLoadError=error.message||'读取已删除订单失败，请点刷新重试。';
@@ -363,11 +365,26 @@ function bindNoteActions(){
   window.addEventListener('resize',showExpandableNotes);
 }
 
-function filtered(dateOrders=ordersInDateRange(listOrders(),$('#from').value,$('#to').value)){const q=$('#search').value.trim().toLowerCase();return dateOrders.filter(o=>(listMode==='all'||viewingDeletedOrders()||(listMode==='pending'?['new','contacted'].includes(o.status):o.status==='completed'))&&(!q||[o.name,o.phone,o.id,displayId(o),normalizePhone(o.phone)].some(v=>v.toLowerCase().includes(q))||(/[0-9]/.test(q)&&normalizePhone(o.phone).includes(normalizePhone(q))))&&(!$('#status').value||o.status===$('#status').value)&&(!$('#source').value||o.source===$('#source').value)&&(!$('#ad-id').value.trim()||String(o.adId||'').toLowerCase().includes($('#ad-id').value.trim().toLowerCase()))&&($('#duplicate').value!=='yes'||o.isDuplicate)&&($('#duplicate').value!=='no'||!o.isDuplicate)).sort((a,b)=>viewingDeletedOrders()?b.deletedAt.localeCompare(a.deletedAt)||a.id.localeCompare(b.id):b.createdAt.localeCompare(a.createdAt));}
+function filtered(dateOrders=ordersInDateRange(listOrders(),$('#from').value,$('#to').value)){const q=$('#search').value.trim().toLowerCase();return dateOrders.filter(o=>(listMode==='all'||viewingDeletedOrders()||(listMode==='pending'?['new','contacted'].includes(o.status):o.status==='completed'))&&(!q||[o.name,o.phone,o.id,displayId(o),normalizePhone(o.phone)].some(v=>String(v??'').toLowerCase().includes(q))||(/[0-9]/.test(q)&&normalizePhone(o.phone).includes(normalizePhone(q))))&&(!$('#status').value||o.status===$('#status').value)&&(!$('#source').value||o.source===$('#source').value)&&(!$('#ad-id').value.trim()||String(o.adId||'').toLowerCase().includes($('#ad-id').value.trim().toLowerCase()))&&($('#duplicate').value!=='yes'||o.isDuplicate)&&($('#duplicate').value!=='no'||!o.isDuplicate)).sort((a,b)=>viewingDeletedOrders()?b.deletedAt.localeCompare(a.deletedAt)||a.id.localeCompare(b.id):b.createdAt.localeCompare(a.createdAt));}
 function renderOrderRow(order){
   const id=esc(order.id);
-  const location=orderLocation(order);
   const deleted=Boolean(order.deletedAt);
+  if(deleted&&!isAdmin()){
+    return `<article class="order-row is-deleted" data-order="${id}">
+      <div class="order-summary">
+        <div class="order-title"><strong class="short-id">${esc(displayId(order))}</strong></div>
+        <div class="order-meta">
+          <span>${esc(order.product)} × ${esc(order.quantity)}</span>
+          <span>金额 <strong>NT$ ${order.price.toLocaleString()}</strong></span>
+          <span class="status ${esc(order.status)}">${esc(statuses[order.status])}</span>
+        </div>
+        <div class="order-date"><span>下单时间 · ${dateKey(order.createdAt)} ${time(order.createdAt)}</span>
+          <span>删除时间 · ${dateKey(order.deletedAt)} ${time(order.deletedAt)}</span>
+        </div>
+      </div>
+    </article>`;
+  }
+  const location=orderLocation(order);
   const busy=changingDeletedOrders.has(order.id)?'disabled':'';
   const reasons=['重粉','电话错误','无法联系','无购买意愿','其他'];
   const duplicateReasons=[...new Set(order.matches.map(match=>match.reason))].join(' / ');
@@ -412,6 +429,11 @@ function render(){
   const from=$('#from').value;
   const to=$('#to').value;
   const trash=viewingDeletedOrders();
+  const limited=staffTrash();
+  const search=$('#search');
+  search.placeholder=limited?'搜索订单编号':'搜索姓名、电话或订单编号';
+  search.setAttribute('aria-label',limited?'搜索订单编号':'搜索订单');
+  for(const id of ['ad-id','source','duplicate'])$('#'+id).hidden=limited;
   const dateOrders=ordersInDateRange(listOrders(),from,to);
   const all=filtered(dateOrders);
   $('#list-title').firstChild.textContent=(trash?'已删除订单':ordersLabel())+' ';
@@ -450,7 +472,7 @@ function render(){
     const hasOrders=listOrders().length>0;
     $('#empty b').textContent=hasOrders?'没有符合条件的订单':trash?'暂无已删除订单':'暂无订单';
     $('#empty p').textContent=hasOrders?'试着调整搜索内容或清除筛选。'
-      :trash?'移入此分类的订单可在这里恢复。':isAdmin()?'客户提交订单后将显示在这里。':'分配给你的订单会显示在这里。';
+      :trash?(limited?'分配给你的已删除订单会显示在这里。':'移入此分类的订单可在这里恢复。'):isAdmin()?'客户提交订单后将显示在这里。':'分配给你的订单会显示在这里。';
     $('#empty-clear').hidden=!hasOrders;
   }
   $('#page-label').textContent=`共 ${all.length} 笔${all.length?` · 显示 ${(page-1)*pageSize+1}–${Math.min(page*pageSize,all.length)} 笔`:''}`;
@@ -542,7 +564,7 @@ if(trashButton){
   void changeOrderDeleted(trashButton.dataset.trashOrder||trashButton.dataset.restoreOrder,deleted);
   return;
 }
-const statusButton=e.target.closest('[data-status]');if(statusButton)updateStatus(statusButton.dataset.id,statusButton.dataset.status);const invalid=e.target.closest('[data-invalid]');if(invalid){const reason=invalid.closest('.order-row').querySelector('[data-reason]').value;if(!reason){toast('请先选择无效原因');return;}updateStatus(invalid.dataset.invalid,'invalid',reason);}const copy=e.target.closest('[data-copy]');if(copy){const o=orders.find(x=>x.id===copy.dataset.copy);copyText(`订单编号：${displayId(o)}\n下单时间：${dateKey(o.createdAt)} ${time(o.createdAt)}\n商品：${o.product} × ${o.quantity}\n订单金额：NT$ ${o.price.toLocaleString()}\n姓名：${o.name}\n电话：${o.phone}`);}const tab=e.target.closest('[data-list]');if(tab){if(tab.dataset.list==='deleted'&&!isAdmin())return;listMode=tab.dataset.list;page=1;selected.clear();
+const statusButton=e.target.closest('[data-status]');if(statusButton)updateStatus(statusButton.dataset.id,statusButton.dataset.status);const invalid=e.target.closest('[data-invalid]');if(invalid){const reason=invalid.closest('.order-row').querySelector('[data-reason]').value;if(!reason){toast('请先选择无效原因');return;}updateStatus(invalid.dataset.invalid,'invalid',reason);}const copy=e.target.closest('[data-copy]');if(copy){const o=orders.find(x=>x.id===copy.dataset.copy);copyText(`订单编号：${displayId(o)}\n下单时间：${dateKey(o.createdAt)} ${time(o.createdAt)}\n商品：${o.product} × ${o.quantity}\n订单金额：NT$ ${o.price.toLocaleString()}\n姓名：${o.name}\n电话：${o.phone}`);}const tab=e.target.closest('[data-list]');if(tab){if(tab.dataset.list==='deleted'&&!canViewDeletedOrders())return;listMode=tab.dataset.list;page=1;selected.clear();
 document.querySelectorAll('[data-list]').forEach(b=>b.classList.toggle('active',b===tab));
 if(viewingDeletedOrders()){clear();openDeletedOrders();}
 else {if(listMode==='all')setTodayFilter();render();}}const close=e.target.closest('[data-close]');if(close)$('#'+close.dataset.close).close();const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const nav=e.target.closest('[data-view]');if(nav&&(nav.dataset.view==='orders'||isAdmin())){view=nav.dataset.view;
@@ -765,7 +787,7 @@ async function enterWorkspace(role){
   document.body.dataset.role=role;
   $('[data-view="settings"]').hidden=!isAdmin();
   const deletedTab=$('[data-list="deleted"]');
-  if(deletedTab)deletedTab.hidden=!isAdmin();
+  if(deletedTab)deletedTab.hidden=!canViewDeletedOrders();
   $('#role-avatar').textContent=isAdmin()?'管':'员';
   $('#role-label').textContent=isAdmin()?'管理员':'订单处理';
   $('#orders-nav-label').textContent=ordersLabel();

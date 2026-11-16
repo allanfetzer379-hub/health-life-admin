@@ -79,6 +79,7 @@ nav button>#orders-nav-label{display:inline;width:auto;font-size:inherit;font-we
 .assignment-row label{min-width:0;flex:1;margin:0}
 .assignment-row button{min-height:40px}
 body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
+body[data-role="staff"] .order-row.is-deleted{grid-template-columns:minmax(0,1fr)}
 @media(max-width:1350px){
   body[data-role="staff"] .order-row{grid-template-columns:minmax(0,1fr)}
   body[data-role="staff"] .row-actions{grid-column:1}
@@ -204,19 +205,19 @@ body[data-role="staff"] .order-row{grid-template-columns:minmax(240px,1fr) auto}
 }
 
 @media (max-width: 760px) {
-  body[data-role="admin"] .table-tools,
-  body[data-role="admin"] .order-tabs {
+  .table-tools,
+  .order-tabs {
     height: auto;
   }
 
-  body[data-role="admin"] .order-tabs {
+  .order-tabs {
     flex-wrap: wrap;
     gap: 0 14px;
     max-width: 100%;
     min-height: 48px;
   }
 
-  body[data-role="admin"] .order-tabs button,
+  .order-tabs button,
   .order-trash-actions .order-trash-control,
   .row-actions .order-trash-control {
     min-height: 44px;

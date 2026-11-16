@@ -94,8 +94,10 @@ export function loadOrders(role){
     ?rpc('staff_load_orders_v2',{p_limit:limit,p_offset:offset})
     :request('/rest/v1/orders?select='+adminOrderColumns+'&order=created_at.desc,id.asc&limit='+limit+'&offset='+offset,{auth:true}));
 }
-export function loadDeletedOrders(){
-  return loadOrderPages((limit,offset)=>rpc('admin_load_deleted_orders?select='+adminOrderColumns,{p_limit:limit,p_offset:offset}));
+export function loadDeletedOrders(role){
+  if(role!=='admin'&&role!=='staff')return Promise.resolve([]);
+  const endpoint=role==='staff'?'staff_load_deleted_orders':'admin_load_deleted_orders?select='+adminOrderColumns;
+  return loadOrderPages((limit,offset)=>rpc(endpoint,{p_limit:limit,p_offset:offset}));
 }
 export const setOrderDeleted=(id,deleted)=>rpc('set_order_deleted',{p_id:id,p_deleted:deleted});
 export const deleteOrders=ids=>rpc('admin_delete_orders',{p_ids:ids});
