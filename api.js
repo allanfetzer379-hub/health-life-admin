@@ -69,7 +69,7 @@ export async function restoreLogin(){
 }
 export async function signOut(){try{if(session)await request('/auth/v1/logout?scope=local',{method:'POST',auth:true});}finally{save(null);}}
 export const rpc=(name,body={})=>request('/rest/v1/rpc/'+name,{method:'POST',body,auth:true});
-const adminOrderColumns='id,name,phone,created_at,source,ad_id,ip,device,ip_country,ip_city,product,quantity,price,status,notes,invalid_reason,matches,logs,assigned_staff_id';
+const adminOrderColumns='id,name,phone,created_at,source,ad_id,ip,device,ip_country,ip_city,product,quantity,price,status,notes,invalid_reason,matches,logs,assigned_staff_id,deleted_at,display_id';
 function normalizeOrder(o){
   return {
     id:o.id,displayId:o.display_id,name:o.name,phone:o.phone,createdAt:o.created_at,
@@ -77,21 +77,27 @@ function normalizeOrder(o){
     ipCountry:o.ip_country||'',ipCity:o.ip_city||'',
     product:o.product,quantity:o.quantity,price:o.price,status:o.status,notes:o.notes,
     invalidReason:o.invalid_reason,matches:o.matches||[],logs:o.logs||[],
-    isDuplicate:o.is_duplicate??Boolean(o.matches?.length),assignedStaffId:o.assigned_staff_id
+    isDuplicate:o.is_duplicate??Boolean(o.matches?.length),assignedStaffId:o.assigned_staff_id,deletedAt:o.deleted_at||null
   };
 }
-export async function loadOrders(role){
+async function loadOrderPages(fetchPage){
   const all=[];
   const limit=500;
   for(let offset=0;;offset+=limit){
-    const rows=role==='staff'
-      ?await rpc('staff_load_orders_v2',{p_limit:limit,p_offset:offset})
-      :await request('/rest/v1/orders?select='+adminOrderColumns+'&order=created_at.desc,id.asc&limit='+limit+'&offset='+offset,{auth:true});
-    all.push(...rows);
-    if(rows.length<limit)break;
+    const rows=await fetchPage(limit,offset);
+    all.push(...rows.map(normalizeOrder));
+    if(rows.length<limit)return all;
   }
-  return all.map(normalizeOrder);
 }
+export function loadOrders(role){
+  return loadOrderPages((limit,offset)=>role==='staff'
+    ?rpc('staff_load_orders_v2',{p_limit:limit,p_offset:offset})
+    :request('/rest/v1/orders?select='+adminOrderColumns+'&order=created_at.desc,id.asc&limit='+limit+'&offset='+offset,{auth:true}));
+}
+export function loadDeletedOrders(){
+  return loadOrderPages((limit,offset)=>rpc('admin_load_deleted_orders?select='+adminOrderColumns,{p_limit:limit,p_offset:offset}));
+}
+export const setOrderDeleted=(id,deleted)=>rpc('set_order_deleted',{p_id:id,p_deleted:deleted});
 export async function loadChangedOrders(role,ids){
   const keys=[...new Set(ids)];
   const changed=[];
