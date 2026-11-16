@@ -98,6 +98,7 @@ export function loadDeletedOrders(){
   return loadOrderPages((limit,offset)=>rpc('admin_load_deleted_orders?select='+adminOrderColumns,{p_limit:limit,p_offset:offset}));
 }
 export const setOrderDeleted=(id,deleted)=>rpc('set_order_deleted',{p_id:id,p_deleted:deleted});
+export const deleteOrders=ids=>rpc('admin_delete_orders',{p_ids:ids});
 export async function loadChangedOrders(role,ids){
   const keys=[...new Set(ids)];
   const changed=[];
