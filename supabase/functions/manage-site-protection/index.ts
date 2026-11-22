@@ -7,14 +7,25 @@ const maxAddresses = 30;
 const maxExpressionLength = 4096;
 const ruleRef = 'nk_landing_protection';
 const ruleDescription = 'NK landing protection (managed by NK admin)';
-const customPhase = 'http_request_firewall_custom';
+const transformPhase = 'http_request_late_transform';
+const legacyEntrypoint = '/phases/http_request_firewall_custom/entrypoint';
+const redirectMarker = 'x-nk-access-redirect';
 const hostFilter = 'http.host in {"ateliser.top" "www.ateliser.top"}';
 const phoneFilter = '(http.user_agent contains "iPhone" or (http.user_agent contains "Android" and http.user_agent contains "Mobile"))';
 const botFilter = 'cf.verified_bot_category in {"AI Crawler" "AI Assistant"}';
 
 type Protection = { enabled: boolean; whitelist: string[]; vpnEnabled: boolean };
 type AppliedProtection = { settings: Protection; vpnExits: string[] };
-type CloudflareRule = { id: string; ref?: string; action: string; enabled: boolean; expression: string };
+type CloudflareRule = {
+  id: string;
+  ref?: string;
+  action: string;
+  enabled: boolean;
+  expression: string;
+  action_parameters?: {
+    headers?: Record<string, { operation?: string; value?: string; expression?: string }>;
+  };
+};
 type CloudflareRuleset = { id: string; rules?: CloudflareRule[] };
 
 class RequestError extends Error {
@@ -75,7 +86,7 @@ function managedRule(ruleset: CloudflareRuleset | null): CloudflareRule | null {
   return matches[0] ?? null;
 }
 
-function protectionFrom(rule: CloudflareRule | null): AppliedProtection {
+function protectionFrom(rule: CloudflareRule | null, action = 'rewrite'): AppliedProtection {
   if (!rule) return { settings: { enabled: false, whitelist: [], vpnEnabled: false }, vpnExits: [] };
   try {
     const whitelistClause = /\s+and\s+not\s+ip\.src\s+in\s+\{([^{}]+)\}/;
@@ -88,7 +99,12 @@ function protectionFrom(rule: CloudflareRule | null): AppliedProtection {
       .replace(whitelistClause, ` and not ip.src in {${whitelist.join(' ')}}`)
       .replace(vpnClause, ` or ip.src in {${vpnExits.join(' ')}}`)
       .trim().replace(/\s+/g, ' ');
-    if (rule.action !== 'block' || typeof rule.enabled !== 'boolean' || vpnExits.some(ip => ip === null) ||
+    const headers = rule.action_parameters?.headers;
+    const marker = headers?.[redirectMarker];
+    if (rule.action !== action || typeof rule.enabled !== 'boolean' || vpnExits.some(ip => ip === null) ||
+        (action === 'rewrite' && (Object.keys(rule.action_parameters ?? {}).length !== 1 ||
+          !headers || Object.keys(headers).length !== 1 || marker?.operation !== 'set' ||
+          marker.value !== '1' || marker.expression !== undefined || Object.keys(marker).length !== 2)) ||
         expression !== expressionFor(whitelist, vpnExits as string[])) {
       throw new Error('Unexpected managed rule');
     }
@@ -144,7 +160,7 @@ function cloudflareClient() {
     throw new RequestError(503, '落地页防护尚未连接 Cloudflare。');
   }
   const base = `https://api.cloudflare.com/client/v4/zones/${zoneId}/rulesets`;
-  const entrypoint = `/phases/${customPhase}/entrypoint`;
+  const entrypoint = `/phases/${transformPhase}/entrypoint`;
 
   return async (path = entrypoint, method = 'GET', body?: unknown): Promise<CloudflareRuleset | null> => {
     const response = await fetch(`${base}${path}`, {
@@ -155,9 +171,16 @@ function cloudflareClient() {
     });
     if (method === 'GET' && response.status === 404) return null;
     const envelope = await response.json();
-    if (!response.ok || envelope.success !== true || !/^[a-f0-9]{32}$/i.test(envelope.result?.id ?? '')) {
-      const codes = Array.isArray(envelope.errors) ? envelope.errors.map((error: { code: number }) => error.code) : [];
-      console.warn('Cloudflare rulesets request failed', method, response.status, codes);
+    const validation = path.endsWith('?dry_run=true');
+    if (!response.ok || envelope.success !== true ||
+        !(validation && envelope.result === null) && !/^[a-f0-9]{32}$/i.test(envelope.result?.id ?? '')) {
+      const errors = Array.isArray(envelope.errors)
+        ? envelope.errors.map((error: { code: number; message: string }) => ({ code: error.code, message: error.message }))
+        : [];
+      console.warn('Cloudflare rulesets request failed', method, response.status, errors);
+      if (validation) {
+        throw new RequestError(400, 'Cloudflare 规则校验未通过：' + String(errors[0]?.message ?? response.status).slice(0, 800));
+      }
       throw new RequestError(502, 'Cloudflare 未能完成防护操作，请稍后重试。');
     }
     return envelope.result as CloudflareRuleset;
@@ -200,16 +223,27 @@ Deno.serve(async (request: Request) => {
   try {
     await requireAdmin(request.headers.get('authorization'));
     const patch = request.method === 'PUT' ? await readProtection(request) : null;
+    const validateOnly = new URL(request.url).searchParams.get('validate') === 'true';
     const cloudflare = cloudflareClient();
-    const entry = await cloudflare();
+    const [entry, legacyEntry] = await Promise.all([cloudflare(), cloudflare(legacyEntrypoint)]);
     const rule = managedRule(entry);
-    const current = protectionFrom(rule);
-    if (!patch) return reply(current.settings);
+    const legacyRule = managedRule(legacyEntry);
+    const legacy = protectionFrom(legacyRule, 'block');
+    const current = rule ? protectionFrom(rule) : legacy;
+    if (!patch) {
+      if (rule && legacyRule?.enabled && !sameProtection(current, legacy)) {
+        throw new RequestError(409, '防护规则迁移尚未完成，请重试刚才的保存操作。');
+      }
+      return reply(current.settings);
+    }
 
     const settings = { ...current.settings, ...patch };
     const vpnExits = !settings.vpnEnabled ? [] : patch.vpnEnabled ? readVpnExits() : current.vpnExits;
     const next = { settings, vpnExits };
-    if (sameProtection(current, next)) return reply(current.settings);
+    if (!validateOnly && rule && !legacyRule?.enabled && sameProtection(current, next)) return reply(current.settings);
+    if (legacyRule?.enabled && !/^[a-f0-9]{32}$/i.test(legacyRule.id)) {
+      throw new RequestError(502, '无法核对原 Cloudflare 规则 ID。');
+    }
     const expression = expressionFor(settings.whitelist, vpnExits);
     if (expression.length > maxExpressionLength) {
       throw new RequestError(502, '防护规则超过 Cloudflare 长度限制，请检查拦截名单。');
@@ -219,27 +253,47 @@ Deno.serve(async (request: Request) => {
       ref: ruleRef,
       description: ruleDescription,
       expression,
-      action: 'block',
+      action: 'rewrite',
+      action_parameters: {
+        headers: { [redirectMarker]: { operation: 'set', value: '1' } },
+      },
       enabled: settings.enabled,
     };
-    let updated;
-    if (!entry) {
-      updated = await cloudflare('', 'POST', {
-        name: 'NK zone custom rules',
-        kind: 'zone',
-        phase: customPhase,
-        rules: [definition],
-      });
-    } else if (!rule) {
-      updated = await cloudflare(`/${entry.id}/rules`, 'POST', definition);
-    } else {
-      if (!/^[a-f0-9]{32}$/i.test(rule.id)) throw new RequestError(502, '无法核对 Cloudflare 规则 ID。');
-      updated = await cloudflare(`/${entry.id}/rules/${rule.id}`, 'PATCH', definition);
-    }
-    const saved = managedRule(updated);
+    if (rule && !/^[a-f0-9]{32}$/i.test(rule.id)) throw new RequestError(502, '无法核对 Cloudflare 规则 ID。');
+    const path = !entry ? '' : !rule ? `/${entry.id}/rules` : `/${entry.id}/rules/${rule.id}`;
+    const method = rule ? 'PATCH' : 'POST';
+    const body = !entry
+      ? { name: 'NK request header transforms', kind: 'zone', phase: transformPhase, rules: [definition] }
+      : definition;
+    const legacyPath = legacyRule?.enabled ? `/${legacyEntry!.id}/rules/${legacyRule.id}` : null;
+    const legacyDefinition = legacyRule?.enabled ? {
+      ref: ruleRef,
+      description: ruleDescription,
+      expression: legacyRule.expression,
+      action: 'block',
+      enabled: false,
+    } : null;
+    await cloudflare(path + '?dry_run=true', method, body);
+    if (legacyPath) await cloudflare(legacyPath + '?dry_run=true', 'PATCH', legacyDefinition);
+    if (validateOnly) return reply({ valid: true });
+    await cloudflare(path, method, body);
+    const saved = managedRule(await cloudflare());
     const effective = protectionFrom(saved);
     if (!saved || !sameProtection(effective, next)) {
       throw new RequestError(502, 'Cloudflare 尚未确认防护设置，请刷新后核对。');
+    }
+    if (legacyRule?.enabled) {
+      const latestLegacy = managedRule(await cloudflare(legacyEntrypoint));
+      if (!latestLegacy || latestLegacy.id !== legacyRule.id ||
+          !sameProtection(protectionFrom(latestLegacy, 'block'), legacy)) {
+        throw new RequestError(409, '原防护规则在迁移期间发生变更，请刷新后重试。');
+      }
+      await cloudflare(legacyPath!, 'PATCH', legacyDefinition);
+      const retired = managedRule(await cloudflare(legacyEntrypoint));
+      if (!retired || retired.enabled || retired.id !== legacyRule.id) {
+        throw new RequestError(502, '跳转规则已保存，原拦截规则尚未停用，请重试保存。');
+      }
+      protectionFrom(retired, 'block');
     }
     return reply(effective.settings);
   } catch (error) {
